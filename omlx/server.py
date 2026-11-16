@@ -841,6 +841,13 @@ try:
 except ImportError:
     pass
 
+# Image generation routes. The router is always mounted: when the optional
+# mflux runtime is missing every request answers 503 with an install hint,
+# which is friendlier than a 404 that looks like a routing bug.
+from .api.image_routes import router as image_router
+
+app.include_router(image_router, dependencies=[Depends(verify_inference_api_key)])
+
 # Include admin routes
 from .admin.auth import _RedirectToLogin, require_admin, set_web_ui_enabled
 from .admin.routes import (
@@ -1661,6 +1668,10 @@ def _suggest_endpoint_for_engine(engine: object) -> str:
         from omlx.engine.sts import STSEngine as sts_engine_cls
     except Exception:  # pragma: no cover - defensive
         sts_engine_cls = None
+    try:
+        from omlx.engine.image import ImageGenerationEngine as image_engine_cls
+    except Exception:  # pragma: no cover - defensive
+        image_engine_cls = None
 
     if stt_engine_cls is not None and isinstance(engine, stt_engine_cls):
         return "Use /v1/audio/transcriptions for speech-to-text models."
@@ -1674,6 +1685,8 @@ def _suggest_endpoint_for_engine(engine: object) -> str:
         return "Use /v1/rerank for reranker models."
     if isinstance(engine, DecisionEngine):
         return "Use /v1/systemone for decision models."
+    if image_engine_cls is not None and isinstance(engine, image_engine_cls):
+        return "Use /v1/images/generations or /v1/images/edits for image models."
     return "Use the model's dedicated endpoint (see /v1/models)."
 
 
@@ -2373,6 +2386,10 @@ def get_max_context_window(model_id: str | None = None) -> int | None:
     if not model_id or pool is None:
         return limit
     entry = pool.get_entry(resolve_model_id(model_id))
+    # Image models have no token context; advertising the configured LLM
+    # fallback would mislead clients into sizing prompts by it.
+    if entry is not None and entry.model_type == "image":
+        return None
     planned = getattr(getattr(entry, "engine", None), "max_context_tokens", None)
     if isinstance(planned, int) and planned > 0 and (limit is None or planned < limit):
         return planned

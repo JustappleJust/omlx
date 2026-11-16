@@ -13,6 +13,7 @@ Supports:
 - Audio STT models: Use STTEngine for speech-to-text (Whisper, Qwen3-ASR, ...)
 - Audio TTS models: Use TTSEngine for text-to-speech (Qwen3-TTS, Kokoro, ...)
 - Decision models: Use DecisionEngine for /v1/systemone (Clef, OpenJev, d3, d1)
+- Image models: Use ImageGenerationEngine for /v1/images (mflux pipelines)
 """
 
 import contextlib
@@ -25,14 +26,31 @@ from pathlib import Path
 from typing import Literal
 
 from . import gguf
+from .image_models import detect_image_spec, looks_like_image_model_dir
 
 logger = logging.getLogger(__name__)
 
 ModelType = Literal[
-    "llm", "vlm", "embedding", "reranker", "audio_stt", "audio_tts", "audio_sts", "decision"
+    "llm",
+    "vlm",
+    "embedding",
+    "reranker",
+    "audio_stt",
+    "audio_tts",
+    "audio_sts",
+    "decision",
+    "image",
 ]
 EngineType = Literal[
-    "batched", "vlm", "embedding", "reranker", "audio_stt", "audio_tts", "audio_sts", "decision"
+    "batched",
+    "vlm",
+    "embedding",
+    "reranker",
+    "audio_stt",
+    "audio_tts",
+    "audio_sts",
+    "decision",
+    "image",
 ]
 DecisionKind = Literal["clef", "openjev", "d3", "d1"]
 
@@ -722,6 +740,12 @@ def detect_model_type(model_path: Path) -> ModelType:
        presence (``vision_config`` / ``vit_config`` / non-empty
        ``mm_vision_tower`` — see :func:`_has_vision_subconfig`)
     7. Audio model detection (STT/TTS/STS)
+    8. Image-generation models registered in :mod:`omlx.image_models`
+
+    Image detection runs first because diffusion checkpoints are not
+    ``config.json``-shaped: they ship a diffusers ``model_index.json`` (or an
+    ``mflux_model.json`` for mflux-saved copies), and the LLM fallback below
+    would otherwise classify them as LLMs.
 
     Decision models (see :func:`decision_kind`) are checked first because
     their backbones look like ordinary VLM checkpoints.
@@ -731,8 +755,11 @@ def detect_model_type(model_path: Path) -> ModelType:
 
     Returns:
         Model type: "llm", "vlm", "embedding", "reranker", "audio_stt",
-        "audio_tts", "audio_sts", or "decision"
+        "audio_tts", "audio_sts", "decision", or "image"
     """
+    if detect_image_spec(model_path) is not None:
+        return "image"
+
     config_path = model_path / "config.json"
     if not config_path.exists():
         return "llm"
@@ -1132,11 +1159,42 @@ def detect_reasoning_effort(
     return [level for level in REASONING_EFFORT_LEVELS if level in named]
 
 
+# Image pipelines keep a full denoising working set (latents, attention
+# buffers, a resident text encoder) beyond the weights themselves. 5% of a
+# 20 GB checkpoint under-counts that by an order of magnitude, so admit image
+# models with a fixed activation reserve instead.
+IMAGE_ACTIVATION_RESERVE_BYTES = 2 * 1024**3
+
+
+def _image_weight_bytes(model_path: Path) -> int:
+    """Sum a diffusion checkpoint's component shards, one pass per file.
+
+    Diffusers/mflux layouts keep weights in component subdirectories. HF cache
+    snapshots symlink every file to a shared blob store, so entries are
+    de-duplicated by resolved path.
+    """
+    seen: set[Path] = set()
+    total = 0
+    for shard in model_path.rglob("*.safetensors"):
+        try:
+            resolved = shard.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            total += shard.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
 def estimate_model_size(model_path: Path) -> int:
     """
     Estimate model memory usage from safetensors/bin file sizes.
 
     MLX keeps quantized weights in compressed form, so file size ≈ memory usage.
+    Image checkpoints are summed across their component directories and get a
+    fixed activation reserve (the denoising working set is not proportional to
+    file size the way a 5% margin assumes).
 
     Args:
         model_path: Path to model directory
@@ -1144,6 +1202,13 @@ def estimate_model_size(model_path: Path) -> int:
     Returns:
         Estimated memory usage in bytes
     """
+    if (model_path / "model_index.json").is_file() or (
+        model_path / "mflux_model.json"
+    ).is_file():
+        image_bytes = _image_weight_bytes(model_path)
+        if image_bytes > 0:
+            return image_bytes + IMAGE_ACTIVATION_RESERVE_BYTES
+
     total_size = 0
 
     # Primary: safetensors files
@@ -1261,8 +1326,17 @@ def _is_adapter_dir(path: Path) -> bool:
 
 
 def _is_model_dir(path: Path) -> bool:
-    """Check if a directory contains a valid model (has config.json)."""
-    return (path / "config.json").exists() and not _is_adapter_dir(path)
+    """Check if a directory holds a servable model.
+
+    LLM/VLM/audio/embedding checkpoints carry ``config.json``. Image models
+    use diffusers' ``model_index.json`` (or an ``mflux_model.json`` written by
+    ``mflux-save``) instead, so they are recognised through the registry.
+    """
+    if _is_adapter_dir(path):
+        return False
+    if (path / "config.json").exists():
+        return True
+    return looks_like_image_model_dir(path)
 
 
 _SHARD_FILE_RE = re.compile(r"-(\d+)-of-(\d+)\.safetensors$")
@@ -1626,6 +1700,14 @@ def _is_hf_cache_mlx_compatible(model_dir: Path, source_repo_id: str) -> bool:
     """Heuristic for HF cache entries that can be loaded without conversion."""
     if not _is_model_dir(model_dir):
         return False
+    # Diffusion checkpoints have no model*.safetensors at the top level; the
+    # registry decides whether mflux can serve the family.
+    if looks_like_image_model_dir(model_dir):
+        logger.info(
+            "Treating HF cache model as a supported image checkpoint: %s",
+            source_repo_id,
+        )
+        return True
     try:
         config = json.loads((model_dir / "config.json").read_text())
     except (OSError, ValueError):
@@ -1747,6 +1829,8 @@ def _register_model(
             engine_type = "audio_sts"
         elif model_type == "decision":
             engine_type = "decision"
+        elif model_type == "image":
+            engine_type = "image"
         else:
             engine_type = "batched"
         estimated_size = estimate_model_size(model_dir)

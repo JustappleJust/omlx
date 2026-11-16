@@ -158,6 +158,15 @@ audio = [
     # python; uvicorn's ws="auto" picks it up when installed.
     "wsproto==1.2.0",
 ]
+image = [
+    # MLX-native image generation (FLUX 3 Image Klein, Krea 2 Turbo,
+    # Qwen-Image-2.1). mflux 0.24 targets mlx 0.32.x, matching the pin in
+    # [project] dependencies, and transformers <6, which the server pin
+    # already satisfies. It also requires real torch (for its export
+    # utilities, not for MLX inference), so this extra is not part of the
+    # DMG bundle, which ships omlx._torch_stub instead.
+    "mflux>=0.24.0,<0.25",
+]
 paroquant = [
     # ParoQuant runtime loader for paroquant-quantized models. Installed
     # with --no-deps semantics here because the official [mlx] extra pulls

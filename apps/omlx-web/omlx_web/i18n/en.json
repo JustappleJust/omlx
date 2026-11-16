@@ -1608,6 +1608,7 @@
   "modal.model_settings.model_type_audio_stt": "Audio STT",
   "modal.model_settings.model_type_audio_tts": "Audio TTS",
   "modal.model_settings.model_type_embedding": "Embedding",
+  "modal.model_settings.model_type_image": "Image",
   "modal.model_settings.model_type_reranker": "Reranker",
   "modal.model_settings.profiles.no_presets": "No presets available",
   "modal.model_settings.reasoning_parser_none": "None",

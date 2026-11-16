@@ -36,6 +36,7 @@ from . import gguf
 from .engine import BaseEngine, BatchedEngine
 from .engine.decision import DecisionEngine
 from .engine.embedding import EmbeddingEngine
+from .engine.image import ImageGenerationEngine
 from .engine.reranker import RerankerEngine
 from .engine.splash import (
     EXTERNAL_ENGINES,
@@ -67,6 +68,7 @@ from .exceptions import (
     describe_ceiling_binding,
     is_metal_out_of_memory,
 )
+from .image_models import detect_image_spec
 from .model_discovery import (
     VLM_NATIVE_TEXT_MODEL_TYPES,
     detect_model_type,
@@ -350,6 +352,7 @@ class EngineEntry:
         "audio_tts",
         "audio_sts",
         "decision",
+        "image",
     ]  # Model type
     engine_type: Literal[
         "batched",
@@ -361,6 +364,7 @@ class EngineEntry:
         "audio_tts",
         "audio_sts",
         "decision",
+        "image",
     ]  # Engine type to use
     estimated_size: int  # Pre-calculated from safetensors (bytes)
     text_only_size: int = 0  # Language-only estimate for VLM checkpoints (0 = n/a)
@@ -396,6 +400,7 @@ class EngineEntry:
         | STTEngine
         | STSEngine
         | TTSEngine
+        | ImageGenerationEngine
         | None
     ) = None  # Loaded engine instance
     last_access: float = 0.0  # Latest load/acquire/release for LRU and TTL
@@ -1643,6 +1648,7 @@ class EnginePool:
         "audio_tts": "audio_tts",
         "audio_sts": "audio_sts",
         "decision": "decision",
+        "image": "image",
     }
 
     @staticmethod
@@ -2729,6 +2735,7 @@ class EnginePool:
         | STTEngine
         | STSEngine
         | TTSEngine
+        | ImageGenerationEngine
     ):
         """
         Get or load engine for the specified model.
@@ -4330,6 +4337,11 @@ class EnginePool:
                     engine = STSEngine(
                         model_name=entry.model_path,
                         config_model_type=entry.config_model_type,
+                    )
+                elif effective_type == "image":
+                    engine = ImageGenerationEngine(
+                        model_name=entry.model_path,
+                        spec=detect_image_spec(entry.model_path),
                     )
                 else:
                     engine = BatchedEngine(

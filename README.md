@@ -286,6 +286,8 @@ Drop-in replacement for OpenAI and Anthropic APIs. Supports streaming usage stat
 | `POST /v1/messages` | Anthropic Messages API |
 | `POST /v1/embeddings` | Text embeddings |
 | `POST /v1/rerank` | Document reranking |
+| `POST /v1/images/generations` | Image generation (requires `omlx[image]`) |
+| `POST /v1/images/edits` | Image editing / img2img (requires `omlx[image]`) |
 | `POST /v1/systemone` | Typed decisions with decision models or chat models (TypeSafe System One) |
 | `GET /v1/models` | List available models |
 | `POST /tokenize`, `POST /detokenize` | vLLM-compatible tokenizer API (also under `/v1`) |
@@ -335,6 +337,30 @@ Models are auto-detected by type. You can also download models directly from the
 | Embedding | BERT, BGE-M3, ModernBERT, EmbeddingGemma 2 |
 | Reranker | ModernBERT, XLM-RoBERTa |
 | Decision | Clef, Clef-Flash, OpenJev, Decision 3.0 (d3, d3-flash, d3-mini, d3-nano, d3-lite, d3-edge) |
+| Image | FLUX 3 Image Klein (distilled/base), Krea 2 Turbo, Qwen-Image-2.1(-Turbo) |
+
+### Image Generation
+
+Local text-to-image and image editing on MLX, backed by
+[mflux](https://github.com/mflux-community/mflux). Install the optional extra
+and drop an `mflux-save` checkpoint or diffusers snapshot into the model
+directory:
+
+```bash
+pip install "omlx[image]"
+```
+
+| Model | Default steps | Guidance | Editing |
+|---|---|---|---|
+| `flux-3-image-klein` | 16 | none | up to 10 reference images |
+| `krea-2-turbo` | 8 | 1.0 | strength-based img2img |
+| `qwen-image-2.1-turbo` | 8 | 1.0 | up to 10 references, masks, alpha |
+
+OpenAI-compatible endpoints (`/v1/images/generations`,
+`/v1/images/edits`, plus vendor defaults and per-request overrides) run on the
+same server and API key as chat. See
+[Image Generation](docs/image-generation.md) for model layouts, curl/Python
+examples, field reference, and memory guidance.
 
 ## CLI Configuration
 

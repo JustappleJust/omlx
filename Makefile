@@ -5,7 +5,7 @@ KERNEL_BUILD_DEPS = $(shell $(PYTHON) -c "import tomllib; \
 	reqs = tomllib.load(open('pyproject.toml', 'rb'))['build-system']['requires']; \
 	print(' '.join(repr(r) for r in reqs if r.startswith(('setuptools', 'cmake', 'nanobind'))))")
 
-.PHONY: install install-no-kernels mcp dev dev-no-kernels kernels clean-kernels web app
+.PHONY: install install-no-kernels mcp image dev dev-no-kernels kernels clean-kernels web app
 
 # Editable install of the server and the web UI, then the native custom kernels.
 install: install-no-kernels
@@ -19,6 +19,10 @@ install-no-kernels:
 # Add MCP (Model Context Protocol) support to the editable install.
 mcp:
 	$(PYTHON) -m pip install -e ".[mcp]"
+
+# Add local image generation (mflux: FLUX 3 Klein, Krea 2 Turbo, Qwen-Image-2.1).
+image:
+	$(PYTHON) -m pip install -e ".[image]"
 
 # Same as install, with dev tools (requires pip 25.1+ for dependency groups).
 dev: dev-no-kernels
