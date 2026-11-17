@@ -1,0 +1,433 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('images.title') }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ static('css/dashboard.css') }}">
+<script src="{{ static('js/images.js') }}"></script>
+<style>
+    .img-checker {
+        background-color: rgb(var(--palette-neutral-100));
+        background-image:
+            linear-gradient(45deg, rgb(var(--palette-neutral-200)) 25%, transparent 25%),
+            linear-gradient(-45deg, rgb(var(--palette-neutral-200)) 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, rgb(var(--palette-neutral-200)) 75%),
+            linear-gradient(-45deg, transparent 75%, rgb(var(--palette-neutral-200)) 75%);
+        background-size: 16px 16px;
+        background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+    }
+    /* Dark mode: darker checker colours. Never use `filter` here -- it also
+       applies to the image inside and would dim the result. */
+    [data-theme="dark"] .img-checker {
+        background-color: rgb(var(--palette-neutral-900));
+        background-image:
+            linear-gradient(45deg, rgb(var(--palette-neutral-800)) 25%, transparent 25%),
+            linear-gradient(-45deg, rgb(var(--palette-neutral-800)) 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, rgb(var(--palette-neutral-800)) 75%),
+            linear-gradient(-45deg, transparent 75%, rgb(var(--palette-neutral-800)) 75%);
+    }
+    .mask-cursor { cursor: crosshair; touch-action: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-white flex flex-col" x-data='imagePlayground({{ api_key | tojson }})'>
+
+    <!-- Header -->
+    <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-neutral-200">
+        <div class="max-w-[100rem] mx-auto px-4 sm:px-6 h-14 flex items-center gap-3">
+            <a href="/admin/dashboard" class="flex items-center gap-2">
+                <img src="/admin/static/navbar-logo-light.svg" alt="oMLX" class="w-7 h-7 dark:hidden">
+                <img src="/admin/static/navbar-logo-dark.svg" alt="oMLX" class="w-7 h-7 hidden dark:block">
+            </a>
+            <h1 class="text-base font-semibold text-neutral-900 truncate">{{ t('images.title') }}</h1>
+            <div class="ml-auto flex items-center gap-1">
+                <a href="/admin/chat" class="px-3 py-1.5 rounded-full text-sm text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 flex items-center gap-1.5">
+                    <i data-lucide="message-circle" class="w-4 h-4"></i><span class="hidden sm:inline">{{ t('navbar.tab.chat') }}</span>
+                </a>
+                <a href="/admin/dashboard" class="px-3 py-1.5 rounded-full text-sm text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 flex items-center gap-1.5">
+                    <i data-lucide="layout-dashboard" class="w-4 h-4"></i><span class="hidden sm:inline">{{ t('images.nav.dashboard') }}</span>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- API key prompt (only when the server has no key to inject) -->
+    <div x-show="!apiKey" x-cloak class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <h2 class="text-lg font-semibold mb-2 text-neutral-900">{{ t('login.login.label_api_key') }}</h2>
+            <p class="text-sm text-neutral-500 mb-4">{{ t('chat.api_key_prompt') }}</p>
+            <input type="password" x-model="apiKeyInput" @keydown.enter="saveApiKey()"
+                   class="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm mb-3">
+            <button @click="saveApiKey()" :disabled="!apiKeyInput.trim()"
+                    class="w-full px-4 py-2 rounded-full bg-neutral-900 text-white text-sm hover:bg-neutral-800 disabled:opacity-40">
+                {{ t('chat.api_key_continue') }}
+            </button>
+        </div>
+    </div>
+
+    <main class="flex-grow max-w-[100rem] w-full mx-auto px-4 sm:px-6 py-6 grid gap-6 lg:grid-cols-[24rem_minmax(0,1fr)]">
+
+        <!-- ================= Controls ================= -->
+        <section class="space-y-4">
+            <!-- Model -->
+            <div class="rounded-2xl border border-neutral-200 p-4 space-y-3">
+                <label class="block text-xs font-medium text-neutral-500">{{ t('images.model') }}</label>
+                <template x-if="modelsLoading">
+                    <div class="text-sm text-neutral-400">{{ t('images.loading_models') }}</div>
+                </template>
+                <template x-if="!modelsLoading && !models.length">
+                    <div class="text-sm text-neutral-500">{{ t('images.no_models') }}</div>
+                </template>
+                <select id="image-model" x-show="models.length" x-model="modelId"
+                        class="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm text-neutral-900">
+                    <template x-for="m in models" :key="m.id">
+                        <option :value="m.id" x-text="m.id + (m.loaded ? ' ●' : '')"></option>
+                    </template>
+                </select>
+                <div x-show="model" class="flex flex-wrap gap-1.5">
+                    <span class="badge bg-neutral-50 text-neutral-600 border-neutral-200" x-text="model?.adapter"></span>
+                    <span x-show="caps.edit" class="badge bg-sky-50 text-sky-700 border-sky-200">{{ t('images.cap.edit') }}</span>
+                    <span x-show="caps.mask" class="badge bg-violet-50 text-violet-700 border-violet-200">{{ t('images.cap.mask') }}</span>
+                    <span x-show="model?.loaded" class="badge bg-emerald-50 text-emerald-700 border-emerald-200">{{ t('images.cap.loaded') }}</span>
+                </div>
+
+                <!-- Mode -->
+                <div class="segmented w-full" x-show="canEdit">
+                    <button type="button" class="segmented__item flex-1" :class="mode === 'generate' && 'segmented__item--active'" @click="mode = 'generate'">
+                        {{ t('images.mode.generate') }}
+                    </button>
+                    <button type="button" class="segmented__item flex-1" :class="mode === 'edit' && 'segmented__item--active'" @click="mode = 'edit'">
+                        {{ t('images.mode.edit') }}
+                    </button>
+                </div>
+            </div>
+
+            <!-- References (edit) -->
+            <div x-show="mode === 'edit' && canEdit" x-cloak class="rounded-2xl border border-neutral-200 p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <label class="text-xs font-medium text-neutral-500">
+                        {{ t('images.references') }}
+                        <span class="text-neutral-400" x-text="`${references.length}/${maxRefs}`"></span>
+                    </label>
+                    <label class="text-xs text-neutral-600 hover:text-neutral-900 cursor-pointer flex items-center gap-1">
+                        <i data-lucide="plus" class="w-3.5 h-3.5"></i>{{ t('images.add_image') }}
+                        <input type="file" accept="image/*" multiple class="hidden" @change="addFiles($event.target.files); $event.target.value = ''">
+                    </label>
+                </div>
+                <div @dragover.prevent="dragOver = true" @dragleave.prevent="dragOver = false" @drop.prevent="onDrop($event)"
+                     :class="dragOver ? 'border-neutral-900 bg-neutral-50' : 'border-neutral-200'"
+                     class="rounded-xl border-2 border-dashed p-3 transition-colors">
+                    <div x-show="!references.length" class="py-6 text-center text-xs text-neutral-400">
+                        <i data-lucide="image-plus" class="w-6 h-6 mx-auto mb-2"></i>
+                        {{ t('images.drop_hint') }}
+                    </div>
+                    <div x-show="references.length" class="grid grid-cols-3 gap-2">
+                        <template x-for="(r, i) in references" :key="r.id">
+                            <div class="relative group aspect-square rounded-lg overflow-hidden img-checker">
+                                <img :src="r.url" class="w-full h-full object-contain">
+                                <span x-show="i === 0 && references.length > 1" class="absolute left-1 top-1 badge bg-white/90 text-neutral-700 border-neutral-200">{{ t('images.primary') }}</span>
+                                <button type="button" @click="removeReference(i)" :title="window.t('images.remove')"
+                                        class="absolute right-1 top-1 p-1 rounded-lg bg-white/90 text-neutral-700 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                                </button>
+                                <span class="absolute bottom-1 left-1 text-caption px-1 rounded bg-black/50 text-white" x-text="`${r.w}×${r.h}`"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Mask -->
+                <div x-show="caps.mask" class="flex items-center gap-2 flex-wrap">
+                    <button type="button" @click="openMaskEditor()" :disabled="!references.length"
+                            class="px-3 py-1.5 rounded-full border border-neutral-200 text-xs text-neutral-700 hover:bg-neutral-50 disabled:opacity-40 flex items-center gap-1.5">
+                        <i data-lucide="brush" class="w-3.5 h-3.5"></i>
+                        <span x-text="mask ? window.t('images.mask.edit') : window.t('images.mask.paint')"></span>
+                    </button>
+                    <label class="px-3 py-1.5 rounded-full border border-neutral-200 text-xs text-neutral-700 hover:bg-neutral-50 cursor-pointer flex items-center gap-1.5">
+                        <i data-lucide="upload" class="w-3.5 h-3.5"></i>{{ t('images.mask.upload') }}
+                        <input type="file" accept="image/*" class="hidden" @change="uploadMask($event.target.files); $event.target.value = ''">
+                    </label>
+                    <template x-if="mask">
+                        <div class="flex items-center gap-2">
+                            <img :src="mask.url" class="w-8 h-8 rounded border border-neutral-200 object-cover bg-black">
+                            <button type="button" @click="clearMask()" class="text-xs text-neutral-500 hover:text-neutral-900">{{ t('images.mask.clear') }}</button>
+                        </div>
+                    </template>
+                </div>
+                <p x-show="caps.mask" class="text-xs text-neutral-400">{{ t('images.mask.hint') }}</p>
+
+                <!-- Strength -->
+                <div x-show="caps.strength" class="space-y-1">
+                    <div class="flex justify-between text-xs text-neutral-500">
+                        <span>{{ t('images.strength') }}</span><span x-text="Number(strength).toFixed(2)"></span>
+                    </div>
+                    <input type="range" min="0.05" max="1" step="0.05" x-model.number="strength" class="w-full accent-neutral-900">
+                    <p class="text-xs text-neutral-400">{{ t('images.strength_hint') }}</p>
+                </div>
+            </div>
+
+            <!-- Prompt -->
+            <div class="rounded-2xl border border-neutral-200 p-4 space-y-3">
+                <label class="block text-xs font-medium text-neutral-500">{{ t('images.prompt') }}</label>
+                <textarea x-model="prompt" rows="5" @keydown.meta.enter="submit()" @keydown.ctrl.enter="submit()"
+                          :placeholder="mode === 'edit' ? window.t('images.prompt_edit_placeholder') : window.t('images.prompt_placeholder')"
+                          class="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm text-neutral-900 resize-y"></textarea>
+                <div x-show="caps.negative_prompt">
+                    <label class="block text-xs font-medium text-neutral-500 mb-1">{{ t('images.negative_prompt') }}</label>
+                    <textarea x-model="negativePrompt" rows="2"
+                              class="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm text-neutral-900 resize-y"></textarea>
+                    <p class="text-xs text-neutral-400 mt-1">{{ t('images.negative_hint') }}</p>
+                </div>
+            </div>
+
+            <!-- Size -->
+            <div class="rounded-2xl border border-neutral-200 p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <label class="text-xs font-medium text-neutral-500">{{ t('images.size') }}</label>
+                    <span class="text-xs text-neutral-700 font-medium" x-text="sizeLabel"></span>
+                </div>
+                <label x-show="mode === 'edit'" class="flex items-center gap-2 text-xs text-neutral-600">
+                    <input type="checkbox" x-model="followReference" class="rounded">
+                    {{ t('images.size.follow_reference') }}
+                </label>
+                <div x-show="!(mode === 'edit' && followReference)" class="space-y-3">
+                    <div class="grid grid-cols-4 gap-1.5">
+                        <template x-for="a in ASPECTS" :key="a">
+                            <button type="button" @click="setAspect(a)"
+                                    :class="!customSize && aspect === a ? 'bg-neutral-900 text-white border-neutral-900' : 'border-neutral-200 text-neutral-700 hover:bg-neutral-50'"
+                                    class="px-2 py-1.5 rounded-lg border text-xs" x-text="a"></button>
+                        </template>
+                        <button type="button" @click="customSize = true"
+                                :class="customSize ? 'bg-neutral-900 text-white border-neutral-900' : 'border-neutral-200 text-neutral-700 hover:bg-neutral-50'"
+                                class="px-2 py-1.5 rounded-lg border text-xs">{{ t('images.size.custom') }}</button>
+                    </div>
+                    <div x-show="!customSize" class="segmented segmented--sm w-full">
+                        <template x-for="r in RESOLUTIONS.filter(v => v <= (defaults.max_side || 2048))" :key="r">
+                            <button type="button" class="segmented__item flex-1" :class="resolution === r && 'segmented__item--active'"
+                                    @click="resolution = r; recomputeSize()" x-text="r"></button>
+                        </template>
+                    </div>
+                    <div x-show="customSize" class="flex items-center gap-2">
+                        <input type="number" x-model.number="width" @change="recomputeSize()" :step="grid"
+                               class="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm">
+                        <span class="text-neutral-400">×</span>
+                        <input type="number" x-model.number="height" @change="recomputeSize()" :step="grid"
+                               class="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm">
+                    </div>
+                    <p class="text-xs text-neutral-400" x-text="window.t('images.size.grid_hint').replace('{n}', grid)"></p>
+                </div>
+            </div>
+
+            <!-- Advanced -->
+            <div class="rounded-2xl border border-neutral-200">
+                <button type="button" @click="showAdvanced = !showAdvanced"
+                        class="w-full px-4 py-3 flex items-center justify-between text-xs font-medium text-neutral-500">
+                    {{ t('images.advanced') }}
+                    <i data-lucide="chevron-down" class="w-4 h-4 transition-transform" :class="showAdvanced && 'rotate-180'"></i>
+                </button>
+                <div x-show="showAdvanced" x-cloak class="px-4 pb-4 space-y-3">
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="block">
+                            <span class="block text-xs text-neutral-500 mb-1">{{ t('images.steps') }}</span>
+                            <input type="number" min="1" max="100" x-model.number="steps" :placeholder="defaults.steps"
+                                   class="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm">
+                        </label>
+                        <label class="block">
+                            <span class="block text-xs text-neutral-500 mb-1">{{ t('images.guidance') }}</span>
+                            <input type="number" min="0" max="30" step="0.1" x-model="guidance" :placeholder="defaults.guidance"
+                                   class="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm">
+                        </label>
+                        <label class="block">
+                            <span class="block text-xs text-neutral-500 mb-1">{{ t('images.count') }}</span>
+                            <select x-model.number="n" class="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm">
+                                <template x-for="v in [1,2,3,4]" :key="v"><option :value="v" x-text="v"></option></template>
+                            </select>
+                        </label>
+                        <label class="block">
+                            <span class="block text-xs text-neutral-500 mb-1">{{ t('images.format') }}</span>
+                            <select x-model="outputFormat" class="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm">
+                                <option value="png">PNG</option><option value="jpeg">JPEG</option><option value="webp">WebP</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div>
+                        <span class="block text-xs text-neutral-500 mb-1">{{ t('images.seed') }}</span>
+                        <div class="flex items-center gap-2">
+                            <input type="number" min="0" x-model="seed" :placeholder="window.t('images.seed_random')"
+                                   class="w-full px-3 py-2 rounded-lg border border-neutral-200 bg-white text-sm">
+                            <button type="button" @click="lockSeed = !lockSeed" :title="window.t('images.seed_lock')"
+                                    :class="lockSeed ? 'bg-neutral-900 text-white' : 'border border-neutral-200 text-neutral-600'"
+                                    class="p-2 rounded-lg">
+                                <span x-show="lockSeed"><i data-lucide="lock" class="w-4 h-4"></i></span>
+                                <span x-show="!lockSeed"><i data-lucide="lock-open" class="w-4 h-4"></i></span>
+                            </button>
+                            <button type="button" @click="seed = Math.floor(Math.random() * 2147483647)" :title="window.t('images.seed_dice')"
+                                    class="p-2 rounded-lg border border-neutral-200 text-neutral-600">
+                                <i data-lucide="dices" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div x-show="(caps.lossy_accel || []).includes('step_cache')" class="flex items-start justify-between gap-3">
+                        <div>
+                            <span class="text-sm text-neutral-700">{{ t('modal.model_settings.image_step_cache') }}</span>
+                            <p class="text-xs text-neutral-400">{{ t('modal.model_settings.image_step_cache_hint') }}</p>
+                        </div>
+                        <button type="button" role="switch" @click="stepCache = !stepCache"
+                                :aria-checked="stepCache ? 'true' : 'false'"
+                                :class="stepCache ? 'bg-black' : 'bg-neutral-200'"
+                                class="relative w-11 h-6 flex-shrink-0 rounded-full transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black">
+                            <span :class="stepCache ? 'translate-x-5' : 'translate-x-0'"
+                                  class="block w-5 h-5 bg-white rounded-full shadow-sm transform transition-transform duration-300 absolute top-0.5 left-0.5"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Run -->
+            <div class="space-y-2 lg:sticky lg:bottom-0 z-10 bg-white rounded-2xl lg:border lg:border-neutral-200 lg:shadow-sm lg:p-3">
+                <button x-show="!running" type="button" @click="submit()" :disabled="!canSubmit"
+                        class="w-full px-4 py-3 rounded-full bg-neutral-900 text-white text-sm font-medium hover:bg-neutral-800 disabled:opacity-40 flex items-center justify-center gap-2">
+                    <i data-lucide="sparkles" class="w-4 h-4"></i>
+                    <span x-text="mode === 'edit' ? window.t('images.run_edit') : window.t('images.run_generate')"></span>
+                </button>
+                <button x-show="running" x-cloak type="button" @click="cancel()"
+                        class="w-full px-4 py-3 rounded-full border border-neutral-300 bg-white text-sm font-medium text-neutral-800 hover:bg-neutral-50 flex items-center justify-center gap-2">
+                    <i data-lucide="square" class="w-4 h-4"></i>{{ t('images.cancel') }}
+                </button>
+                <p class="text-center text-xs text-neutral-400">{{ t('images.shortcut') }}</p>
+                <div x-show="error" x-cloak class="notice notice--danger text-xs rounded-xl px-3 py-2 bg-red-50 text-red-700 border border-red-200" x-text="error"></div>
+            </div>
+        </section>
+
+        <!-- ================= Output ================= -->
+        <section class="space-y-4 min-w-0">
+            <!-- Stage -->
+            <div class="rounded-2xl border border-neutral-200 overflow-hidden">
+                <div class="relative img-checker flex items-center justify-center min-h-[22rem] lg:min-h-[34rem]">
+                    <template x-if="current && !running">
+                        <img :src="url(current)" @click="lightbox = current"
+                             class="max-h-[70vh] max-w-full object-contain cursor-zoom-in">
+                    </template>
+                    <template x-if="!current && !running">
+                        <div class="text-center text-sm text-neutral-400 p-10">
+                            <i data-lucide="image" class="w-10 h-10 mx-auto mb-3"></i>
+                            {{ t('images.empty') }}
+                        </div>
+                    </template>
+                    <template x-if="running">
+                        <div class="w-full max-w-sm p-8 text-center">
+                            <div class="text-sm text-neutral-700 mb-3" x-text="progressText"></div>
+                            <div class="h-2 rounded-full bg-neutral-200 overflow-hidden">
+                                <div class="h-full bg-neutral-900 transition-all duration-500" :style="`width: ${progressPct}%`"></div>
+                            </div>
+                            <div class="text-xs text-neutral-500 mt-2" x-text="elapsed.toFixed(1) + ' s'"></div>
+                        </div>
+                    </template>
+                </div>
+                <div x-show="current && !running" class="px-4 py-3 border-t border-neutral-200 flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <div class="text-xs text-neutral-500 flex flex-wrap gap-x-3 gap-y-1 min-w-0">
+                        <span x-text="current?.model"></span>
+                        <span x-text="`${current?.width}×${current?.height}`"></span>
+                        <span x-text="window.t('images.meta.seed') + ' ' + current?.seed"></span>
+                        <span x-show="current?.steps" x-text="current?.steps + ' ' + window.t('images.meta.steps')"></span>
+                        <span x-show="current?.seconds" x-text="current?.seconds?.toFixed(1) + ' s'"></span>
+                    </div>
+                    <div class="ml-auto flex items-center gap-1">
+                        <button type="button" @click="reuse(current)" :title="window.t('images.action.reuse')" class="p-2 rounded-lg hover:bg-neutral-100 text-neutral-600"><i data-lucide="rotate-ccw" class="w-4 h-4"></i></button>
+                        <button type="button" @click="useAsReference(current)" :title="window.t('images.action.edit')" class="p-2 rounded-lg hover:bg-neutral-100 text-neutral-600"><i data-lucide="wand-sparkles" class="w-4 h-4"></i></button>
+                        <button type="button" @click="download(current)" :title="window.t('images.action.download')" class="p-2 rounded-lg hover:bg-neutral-100 text-neutral-600"><i data-lucide="download" class="w-4 h-4"></i></button>
+                        <button type="button" @click="deleteItem(current)" :title="window.t('images.action.delete')" class="p-2 rounded-lg hover:bg-neutral-100 text-neutral-600"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gallery -->
+            <div class="rounded-2xl border border-neutral-200 p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-sm font-semibold text-neutral-800">
+                        {{ t('images.gallery') }} <span class="text-neutral-400 font-normal" x-text="items.length"></span>
+                    </h2>
+                    <button type="button" x-show="items.length" @click="clearGallery()" class="text-xs text-neutral-500 hover:text-neutral-900">{{ t('images.gallery.clear') }}</button>
+                </div>
+                <div x-show="!items.length" class="text-xs text-neutral-400 py-6 text-center">{{ t('images.gallery.empty') }}</div>
+                <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8 gap-2">
+                    <template x-for="item in items" :key="item.id">
+                        <button type="button" @click="current = item" @dblclick="lightbox = item"
+                                :class="current && current.id === item.id ? 'ring-2 ring-neutral-900' : ''"
+                                class="relative aspect-square rounded-lg overflow-hidden img-checker">
+                            <img :src="url(item)" loading="lazy" class="w-full h-full object-cover">
+                            <span x-show="item.mode === 'edit'" class="absolute left-1 top-1 p-0.5 rounded bg-white/90">
+                                <i data-lucide="wand-sparkles" class="w-3 h-3 text-neutral-700"></i>
+                            </span>
+                        </button>
+                    </template>
+                </div>
+                <p class="text-xs text-neutral-400 mt-3">{{ t('images.gallery.local_hint') }}</p>
+            </div>
+        </section>
+    </main>
+
+    <!-- Lightbox -->
+    <div x-show="lightbox" x-cloak @keydown.escape.window="lightbox = null"
+         class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" @click.self="lightbox = null">
+        <div class="bg-white rounded-2xl overflow-hidden max-w-6xl w-full max-h-[92vh] flex flex-col lg:flex-row">
+            <div class="img-checker flex-1 flex items-center justify-center min-h-0">
+                <img :src="url(lightbox)" class="max-h-[60vh] lg:max-h-[92vh] max-w-full object-contain">
+            </div>
+            <div class="w-full lg:w-80 p-5 space-y-3 overflow-y-auto">
+                <div class="flex items-start justify-between gap-2">
+                    <div class="text-sm font-semibold text-neutral-900 break-all" x-text="lightbox?.model"></div>
+                    <button type="button" @click="lightbox = null" class="p-1 rounded-lg hover:bg-neutral-100"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+                <p class="text-sm text-neutral-700 whitespace-pre-wrap" x-text="lightbox?.prompt"></p>
+                <p x-show="lightbox?.negative_prompt" class="text-xs text-neutral-500" x-text="window.t('images.negative_prompt') + ': ' + lightbox?.negative_prompt"></p>
+                <dl class="grid grid-cols-2 gap-y-1 text-xs">
+                    <dt class="text-neutral-400">{{ t('images.meta.mode') }}</dt><dd class="text-neutral-700" x-text="lightbox?.mode === 'edit' ? window.t('images.mode.edit') : window.t('images.mode.generate')"></dd>
+                    <dt class="text-neutral-400">{{ t('images.size') }}</dt><dd class="text-neutral-700" x-text="`${lightbox?.width}×${lightbox?.height}`"></dd>
+                    <dt class="text-neutral-400">{{ t('images.meta.seed') }}</dt><dd class="text-neutral-700" x-text="lightbox?.seed"></dd>
+                    <dt class="text-neutral-400">{{ t('images.steps') }}</dt><dd class="text-neutral-700" x-text="lightbox?.steps ?? '-'"></dd>
+                    <dt class="text-neutral-400">{{ t('images.meta.time') }}</dt><dd class="text-neutral-700" x-text="lightbox?.seconds ? lightbox.seconds.toFixed(1) + ' s' : '-'"></dd>
+                    <dt class="text-neutral-400">{{ t('images.meta.created') }}</dt><dd class="text-neutral-700" x-text="lightbox ? fmtTime(lightbox.created) : ''"></dd>
+                </dl>
+                <div class="flex flex-wrap gap-2 pt-2">
+                    <button type="button" @click="reuse(lightbox)" class="px-3 py-1.5 rounded-full bg-neutral-900 text-white text-xs hover:bg-neutral-800">{{ t('images.action.reuse') }}</button>
+                    <button type="button" @click="useAsReference(lightbox)" class="px-3 py-1.5 rounded-full border border-neutral-200 text-xs text-neutral-700 hover:bg-neutral-50">{{ t('images.action.edit') }}</button>
+                    <button type="button" @click="download(lightbox)" class="px-3 py-1.5 rounded-full border border-neutral-200 text-xs text-neutral-700 hover:bg-neutral-50">{{ t('images.action.download') }}</button>
+                    <button type="button" @click="copyPrompt(lightbox)" class="px-3 py-1.5 rounded-full border border-neutral-200 text-xs text-neutral-700 hover:bg-neutral-50">{{ t('images.action.copy_prompt') }}</button>
+                    <button type="button" @click="deleteItem(lightbox)" class="px-3 py-1.5 rounded-full border border-neutral-200 text-xs text-red-600 hover:bg-red-50">{{ t('images.action.delete') }}</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mask painter -->
+    <div x-show="maskEditorOpen" x-cloak class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl p-4 space-y-3 max-w-[95vw]">
+            <div class="flex items-center gap-3 flex-wrap">
+                <h3 class="text-sm font-semibold text-neutral-900 mr-auto">{{ t('images.mask.title') }}</h3>
+                <div class="segmented segmented--sm">
+                    <button type="button" class="segmented__item" :class="!eraseMode && 'segmented__item--active'" @click="eraseMode = false">{{ t('images.mask.brush') }}</button>
+                    <button type="button" class="segmented__item" :class="eraseMode && 'segmented__item--active'" @click="eraseMode = true">{{ t('images.mask.eraser') }}</button>
+                </div>
+                <label class="flex items-center gap-2 text-xs text-neutral-600">
+                    {{ t('images.mask.size') }}
+                    <input type="range" min="4" max="200" x-model.number="brushSize" class="w-28 accent-neutral-900">
+                </label>
+                <button type="button" @click="clearMaskCanvas()" class="text-xs text-neutral-500 hover:text-neutral-900">{{ t('images.mask.clear') }}</button>
+            </div>
+            <div class="relative mx-auto" style="width: fit-content;">
+                <img x-ref="maskBg" :src="references[0]?.url" class="block select-none pointer-events-none rounded-lg">
+                <canvas x-ref="maskCanvas" class="absolute inset-0 mask-cursor rounded-lg"
+                        @pointerdown="maskDown($event)" @pointermove="maskMove($event)"
+                        @pointerup.window="maskUp()" @pointerleave="maskUp()"></canvas>
+            </div>
+            <p class="text-xs text-neutral-500">{{ t('images.mask.hint') }}</p>
+            <div class="flex justify-end gap-2">
+                <button type="button" @click="maskEditorOpen = false" class="px-4 py-2 rounded-full border border-neutral-200 text-sm text-neutral-700 hover:bg-neutral-50">{{ t('images.mask.cancel') }}</button>
+                <button type="button" @click="saveMaskEditor()" class="px-4 py-2 rounded-full bg-neutral-900 text-white text-sm hover:bg-neutral-800">{{ t('images.mask.done') }}</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

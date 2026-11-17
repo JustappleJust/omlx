@@ -1278,6 +1278,12 @@
                 <i data-lucide="plus" class="w-4 h-4"></i>
                 {{ t('chat.new_chat') }}
             </button>
+            <a href="/admin/images"
+                class="w-full px-3 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-surface-alt transition-colors"
+                style="color: var(--text-secondary);">
+                <i data-lucide="image" class="w-4 h-4"></i>
+                {{ t('chat.image_playground') }}
+            </a>
             <!-- Search chats -->
             <div x-show="chatHistory.length > 0" class="relative">
                 <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style="color: var(--text-tertiary);"></i>
@@ -5273,7 +5279,7 @@
                 allModels.filter(m => {
                     const gatewayId = this.aliasToGateway[m.id] || m.id;
                     const t = (this.modelTypeMap[gatewayId] || '').toLowerCase();
-                    return t !== 'audio_tts' && t !== 'audio_sts' && t !== 'embedding' && t !== 'reranker' && t !== 'decision';
+                    return t !== 'audio_tts' && t !== 'audio_sts' && t !== 'embedding' && t !== 'reranker' && t !== 'decision' && t !== 'image';
                 }).map(m => ({
                     id: this.aliasToGateway[m.id] || m.id, // gateway id for API calls
                     name: m.id, // original name (alias or directory name) for display

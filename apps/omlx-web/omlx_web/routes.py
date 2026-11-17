@@ -164,6 +164,18 @@ async def chat_page(request: Request, is_admin: bool = Depends(require_admin)):
     return templates.TemplateResponse(request, "chat.html", {"api_key": api_key or ""})
 
 
+@router.get("/images", response_class=HTMLResponse)
+async def images_page(request: Request, is_admin: bool = Depends(require_admin)):
+    """Render the image-generation playground (generate and edit).
+
+    Like the chat page, the main API key is injected so the page can call
+    the OpenAI-compatible ``/v1/images/*`` endpoints directly.
+    """
+    _sync_locale()
+    api_key = _host.main_api_key()
+    return templates.TemplateResponse(request, "images.html", {"api_key": api_key or ""})
+
+
 @router.get("/static/{path:path}")
 async def admin_static(path: str):
     """Serve static files for admin panel (CSS, JS, fonts, logos, etc.)."""

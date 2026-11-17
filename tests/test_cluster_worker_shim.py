@@ -177,3 +177,21 @@ def test_default_home_and_environment_come_from_the_running_server(tmp_path, mon
 
     assert written == tmp_path / ".omlx" / "bin" / "omlx-cluster-python"
     assert sys.executable in written.read_text(encoding="utf-8")
+
+
+def test_keep_foreign_preserves_live_shim_of_another_install(tmp_path):
+    from omlx.cluster.worker_shim import ensure_cluster_python_shim
+
+    other = tmp_path / "app-python"
+    other.write_text("")
+    mine = tmp_path / "fork-python"
+    mine.write_text("")
+    target = ensure_cluster_python_shim(home=tmp_path, executable=str(other), environ={})
+    original = target.read_text()
+
+    ensure_cluster_python_shim(home=tmp_path, executable=str(mine), environ={}, keep_foreign=True)
+    assert target.read_text() == original
+
+    other.unlink()  # the other install is gone -> take over
+    ensure_cluster_python_shim(home=tmp_path, executable=str(mine), environ={}, keep_foreign=True)
+    assert str(mine) in target.read_text()

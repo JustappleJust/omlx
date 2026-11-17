@@ -29,11 +29,45 @@ from . import gguf
 logger = logging.getLogger(__name__)
 
 ModelType = Literal[
-    "llm", "vlm", "embedding", "reranker", "audio_stt", "audio_tts", "audio_sts", "decision"
+    "llm", "vlm", "embedding", "reranker", "audio_stt", "audio_tts", "audio_sts", "decision",
+    "image",
 ]
 EngineType = Literal[
-    "batched", "vlm", "embedding", "reranker", "audio_stt", "audio_tts", "audio_sts", "decision"
+    "batched", "vlm", "embedding", "reranker", "audio_stt", "audio_tts", "audio_sts", "decision",
+    "image",
 ]
+
+
+def _is_image_model_dir(path: Path) -> bool:
+    """Diffusers-style / mflux image-generation model directory."""
+    try:
+        from .image_gen.registry import is_image_model_dir
+    except Exception:  # pragma: no cover - defensive
+        return False
+    return is_image_model_dir(path)
+
+
+def estimate_image_model_size(model_path: Path, quantize: int | None = None) -> int:
+    """Resident weights (after load-time quantization) + one default-size run.
+
+    The transient part uses the adapter's leanest memory plan: the engine can
+    always fall back to it at request time, so admission must not evict other
+    models for the faster plans' extra headroom.
+    """
+    from .image_gen import DEFAULT_IMAGE_QUANTIZE
+    from .image_gen.registry import find_adapter
+
+    adapter = find_adapter(model_path)
+    if adapter is None:
+        raise ValueError(f"Not an image model: {model_path}")
+    if quantize is None:
+        quantize = DEFAULT_IMAGE_QUANTIZE
+    weights = adapter.estimate_weight_bytes(model_path, quantize or None)
+    if weights <= 0:
+        raise ValueError(f"No model weights found in {model_path}")
+    d = adapter.defaults
+    transient = min(p.peak_bytes for p in adapter.memory_plans(d.width, d.height))
+    return int(weights * 1.05) + transient
 DecisionKind = Literal["clef", "openjev", "d3", "d1"]
 
 # Known VLM (Vision-Language Model) types from mlx-vlm
@@ -733,6 +767,9 @@ def detect_model_type(model_path: Path) -> ModelType:
         Model type: "llm", "vlm", "embedding", "reranker", "audio_stt",
         "audio_tts", "audio_sts", or "decision"
     """
+    if _is_image_model_dir(model_path):
+        return "image"
+
     config_path = model_path / "config.json"
     if not config_path.exists():
         return "llm"
@@ -1261,8 +1298,14 @@ def _is_adapter_dir(path: Path) -> bool:
 
 
 def _is_model_dir(path: Path) -> bool:
-    """Check if a directory contains a valid model (has config.json)."""
-    return (path / "config.json").exists() and not _is_adapter_dir(path)
+    """Check if a directory contains a valid model (has config.json).
+
+    Image-generation models (diffusers layout) have no root config.json but a
+    model_index.json recognised by an image adapter.
+    """
+    if _is_adapter_dir(path):
+        return False
+    return (path / "config.json").exists() or _is_image_model_dir(path)
 
 
 _SHARD_FILE_RE = re.compile(r"-(\d+)-of-(\d+)\.safetensors$")
@@ -1626,6 +1669,9 @@ def _is_hf_cache_mlx_compatible(model_dir: Path, source_repo_id: str) -> bool:
     """Heuristic for HF cache entries that can be loaded without conversion."""
     if not _is_model_dir(model_dir):
         return False
+    if _is_image_model_dir(model_dir):
+        # mflux converts diffusers / native checkpoints at load time.
+        return True
     try:
         config = json.loads((model_dir / "config.json").read_text())
     except (OSError, ValueError):
@@ -1733,6 +1779,17 @@ def _register_model(
             return
 
         model_type = detect_model_type(model_dir)
+        if model_type == "image":
+            from .image_gen.registry import find_adapter
+
+            _adapter = find_adapter(model_dir)
+            reason = _adapter.incomplete_reason(model_dir) if _adapter else None
+            if reason:
+                logger.warning(
+                    f"Skipping incomplete image model '{model_id}': {reason} in "
+                    f"{model_dir} — likely an interrupted download."
+                )
+                return
         if model_type == "embedding":
             engine_type: EngineType = "embedding"
         elif model_type == "reranker":
@@ -1747,9 +1804,15 @@ def _register_model(
             engine_type = "audio_sts"
         elif model_type == "decision":
             engine_type = "decision"
+        elif model_type == "image":
+            engine_type = "image"
         else:
             engine_type = "batched"
-        estimated_size = estimate_model_size(model_dir)
+        estimated_size = (
+            estimate_image_model_size(model_dir)
+            if model_type == "image"
+            else estimate_model_size(model_dir)
+        )
         text_only_size = (
             estimate_text_only_model_size(model_dir) if model_type == "vlm" else 0
         )

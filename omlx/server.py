@@ -224,6 +224,7 @@ from .engine.vlm import MINIMAX_M3_MODEL_TYPES
 from .engine.embedding import EmbeddingEngine
 from .engine.reranker import RerankerEngine
 from .engine.decision import DecisionEngine
+from .engine.image_gen import ImageGenEngine
 from .engine_pool import (
     CLAUDE_DESKTOP_TIER_FAMILY,
     EnginePool,
@@ -272,6 +273,7 @@ class EngineType(Enum):
     EMBEDDING = "embedding"
     RERANKER = "reranker"
     DECISION = "decision"
+    IMAGE = "image"
 
 
 @dataclass
@@ -567,7 +569,9 @@ async def lifespan(app: FastAPI):
     try:
         from .cluster.worker_shim import ensure_cluster_python_shim
 
-        ensure_cluster_python_shim()
+        # Fork build (`my-omlx`): don't take the shim over from the official
+        # oMLX app / Homebrew install that shares ~/.omlx.
+        ensure_cluster_python_shim(keep_foreign=True)
     except (ImportError, OSError, RuntimeError) as exc:
         # RuntimeError: Path.home() cannot resolve a home directory.
         # Anything outside this set is a real bug and should surface loudly
@@ -822,6 +826,14 @@ from .api.websearch_routes import set_global_settings_getter as _set_websearch_s
 
 _set_websearch_settings(lambda: _server_state.global_settings)
 app.include_router(websearch_router, dependencies=[Depends(verify_inference_api_key)])
+
+# Include image-generation routes only when mflux (omlx[image]) is installed.
+import importlib.util as _importlib_util
+
+if _importlib_util.find_spec("mflux") is not None:
+    from .api.image_routes import router as image_router
+
+    app.include_router(image_router, dependencies=[Depends(verify_inference_api_key)])
 
 # Include audio routes only when mlx-audio is installed.
 # audio_routes.py itself only imports fastapi/stdlib at module level, so it
@@ -1623,6 +1635,13 @@ async def get_engine(
                     detail=f"Model '{model_id}' is not a decision model. "
                     f"Use a decision model such as Clef, OpenJev or Decision 3.0.",
                 )
+        elif engine_type == EngineType.IMAGE:
+            if not isinstance(engine, ImageGenEngine):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Model '{model_id}' is not an image-generation model. "
+                    f"{_suggest_endpoint_for_engine(engine)}",
+                )
         elif engine_type == EngineType.LLM:
             # #507: non-LLM engines (STT/TTS/STS/Embedding/Reranker) previously
             # fell through and crashed on `engine.model_type` with an unhandled
@@ -1674,6 +1693,8 @@ def _suggest_endpoint_for_engine(engine: object) -> str:
         return "Use /v1/rerank for reranker models."
     if isinstance(engine, DecisionEngine):
         return "Use /v1/systemone for decision models."
+    if isinstance(engine, ImageGenEngine):
+        return "Use /v1/images/generations for image-generation models."
     return "Use the model's dedicated endpoint (see /v1/models)."
 
 

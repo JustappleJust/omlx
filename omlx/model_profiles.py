@@ -123,6 +123,8 @@ EXCLUDED_FROM_PROFILES = frozenset(
         # Memory residency of an embedding model's audio tower; explicit per model.
         "embedding_audio_enabled",
         "embedding_audio_max_seconds",
+        # Image models: quantization changes residency; explicit per model.
+        "image_quantize",
     }
 )
 
