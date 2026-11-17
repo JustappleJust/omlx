@@ -62,17 +62,34 @@ def _render(executable: str, environ: Mapping[str, str]) -> str:
     )
 
 
+def _published_executable(script: str) -> str | None:
+    """The interpreter an existing shim execs, or None if unparsable."""
+    for line in script.splitlines():
+        if line.startswith("exec "):
+            try:
+                parts = shlex.split(line[len("exec ") :])
+            except ValueError:
+                return None
+            return parts[0] if parts else None
+    return None
+
+
 def ensure_cluster_python_shim(
     *,
     home: Path | None = None,
     executable: str | None = None,
     environ: Mapping[str, str] | None = None,
+    keep_foreign: bool = False,
 ) -> Path | None:
     """Install the shim a coordinator discovers over SSH.
 
     Best effort by design: this runs during server start-up, and a read-only or
     unusual home directory must never keep the node from serving inference.
     Returns the shim path on success, ``None`` when it could not be written.
+
+    ``keep_foreign`` leaves an existing shim alone while the interpreter it
+    points at still exists, so a side-by-side install (the ``my-omlx`` fork)
+    does not take the cluster runtime over from the official app.
     """
 
     executable = executable or sys.executable
@@ -99,6 +116,15 @@ def ensure_cluster_python_shim(
             and target.stat().st_mode & stat.S_IXUSR
         ):
             return target
+        if keep_foreign and target.is_file():
+            current = _published_executable(target.read_text(encoding="utf-8"))
+            if current and current != executable and Path(current).exists():
+                logger.info(
+                    "Keeping %s -> %s (owned by another oMLX install)",
+                    CLUSTER_PYTHON_SHIM,
+                    current,
+                )
+                return target
         temporary.write_text(script, encoding="utf-8")
         temporary.chmod(_SHIM_MODE)
         os.replace(temporary, target)

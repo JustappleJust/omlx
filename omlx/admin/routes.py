@@ -499,6 +499,30 @@ class ModelSettingsRequest(BaseModel):
     trust_remote_code: bool | None = None
     embedding_audio_enabled: bool | None = None
     embedding_audio_max_seconds: float | None = Field(default=None, gt=0)
+    # Image-generation models: 0 = bf16, None = default (8-bit).
+    image_quantize: int | None = None
+    image_default_steps: int | None = Field(default=None, ge=1, le=100)
+    image_default_guidance: float | None = Field(default=None, ge=0, le=30)
+    image_default_size: str | None = None
+    image_a8: bool | None = None
+    image_step_cache: bool | None = None
+
+    @field_validator("image_quantize")
+    @classmethod
+    def validate_image_quantize(cls, value: int | None) -> int | None:
+        if value is not None and value not in (0, 3, 4, 5, 6, 8):
+            raise ValueError("image_quantize must be 0 (bf16), 3, 4, 5, 6, or 8")
+        return value
+
+    @field_validator("image_default_size")
+    @classmethod
+    def validate_image_default_size(cls, value: str | None) -> str | None:
+        if value in (None, ""):
+            return None
+        from ..api.image_models import parse_size
+
+        parse_size(value)
+        return value
 
     @field_validator("turboquant_kv_bits")
     @classmethod
@@ -3062,6 +3086,7 @@ async def update_model_settings(
             "audio_tts",
             "audio_sts",
             "decision",
+            "image",
         }
         # Treat empty string as None (auto-detect)
         override_value = request.model_type_override or None
@@ -3075,6 +3100,16 @@ async def update_model_settings(
                 status_code=400,
                 detail=f"Invalid model_type_override: {request.model_type_override}",
             )
+        if override_value == "image":
+            from pathlib import Path
+
+            from ..image_gen.registry import is_image_model_dir
+
+            if not is_image_model_dir(Path(entry.model_path)):
+                raise HTTPException(
+                    status_code=400,
+                    detail="No supported image-generation pipeline found in this model",
+                )
         current_settings.model_type_override = override_value
         # Update engine pool entry type immediately
         type_to_engine = {
@@ -3086,6 +3121,7 @@ async def update_model_settings(
             "audio_tts": "audio_tts",
             "audio_sts": "audio_sts",
             "decision": "decision",
+            "image": "image",
         }
         if override_value:
             entry.model_type = override_value
@@ -3566,6 +3602,19 @@ async def update_model_settings(
         current_settings.embedding_audio_max_seconds = (
             request.embedding_audio_max_seconds
         )
+    if "image_quantize" in sent:
+        current_settings.image_quantize = request.image_quantize
+        engine_pool.refresh_image_estimate(entry, current_settings)
+    if "image_default_steps" in sent:
+        current_settings.image_default_steps = request.image_default_steps
+    if "image_default_guidance" in sent:
+        current_settings.image_default_guidance = request.image_default_guidance
+    if "image_default_size" in sent:
+        current_settings.image_default_size = request.image_default_size or None
+    if "image_a8" in sent:
+        current_settings.image_a8 = request.image_a8
+    if "image_step_cache" in sent:
+        current_settings.image_step_cache = bool(request.image_step_cache)
 
     if is_diffusion_model:
         _sanitize_diffusion_model_settings(current_settings)
@@ -3664,6 +3713,8 @@ async def update_model_settings(
         # trust_remote_code is plumbed at model load time; toggling it on
         # an already-loaded engine has no effect until reload.
         or "trust_remote_code" in sent
+        # Image models read the step-cache default at construction.
+        or (entry.engine_type == "image" and "image_step_cache" in sent)
     )
     auto_unloaded = False
     auto_reloaded = False

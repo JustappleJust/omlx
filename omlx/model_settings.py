@@ -288,7 +288,14 @@ class ModelSettings:
         forced_ct_kwargs: Keys in chat_template_kwargs that cannot be overridden.
         ttl_seconds: Auto-unload after idle seconds (None = no TTL).
         model_type_override: "llm", "vlm", "embedding", "reranker", "decision",
-            or None (auto-detect).
+            "image", or None (auto-detect).
+        image_quantize: Image models only. Load-time weight quantization bits
+            (3/4/5/6/8), 0 for full bf16, None for the default (8).
+        image_default_steps / image_default_guidance / image_default_size:
+            Image models only. Request defaults ("WIDTHxHEIGHT" for size).
+        image_a8: Image models only. INT8-activation GEMM on M5 tensor units
+            (near-lossless; None = on). Changing it reloads the model.
+        image_step_cache: Image models only. Opt-in lossy step skipping.
         model_alias: API-visible alternative to the directory name.
         index_cache_freq: IndexCache: every Nth layer keeps indexer (DeepSeek DSA
             only; GLM-5.2 uses its native checkpoint schedule).
@@ -416,7 +423,7 @@ class ModelSettings:
     )
     ttl_seconds: Optional[int] = None  # Auto-unload after idle seconds (None = no TTL)
     model_type_override: Optional[str] = (
-        None  # "llm", "vlm", "embedding", "reranker", "decision", or None (auto)
+        None  # "llm", "vlm", "embedding", "reranker", "decision", "image", or None (auto)
     )
     model_alias: Optional[str] = (
         None  # API-visible name (alternative to directory name)
@@ -587,6 +594,17 @@ class ModelSettings:
     # The model's context still bounds it: EmbeddingGemma 2 fits about 327 s
     # (8192 tokens at 40 ms each); longer inputs get the token-limit error.
     embedding_audio_max_seconds: Optional[float] = None
+
+    # Image-generation models. Quantization is applied while loading:
+    # None = default (8-bit), 0 = full bf16, otherwise bits (3/4/5/6/8).
+    image_quantize: Optional[int] = None
+    image_default_steps: Optional[int] = None
+    image_default_guidance: Optional[float] = None
+    image_default_size: Optional[str] = None  # "WIDTHxHEIGHT"
+    # Near-lossless INT8-activation GEMM on M5 tensor units (None = on).
+    image_a8: Optional[bool] = None
+    # Opt-in lossy step skipping, for families that implement it.
+    image_step_cache: Optional[bool] = None  # None = off; not persisted when unset
 
     # Metadata
     display_name: Optional[str] = None

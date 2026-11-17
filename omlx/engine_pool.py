@@ -53,6 +53,7 @@ from .engine.splash import (
 )
 from .engine.sts import STSEngine
 from .engine.stt import STTEngine
+from .engine.image_gen import ImageGenEngine
 from .engine.tts import TTSEngine
 from .engine.vlm import OCR_MODEL_GENERATION_DEFAULTS, VLMBatchedEngine
 from .engine_core import get_mlx_executor, shutdown_mlx_executor
@@ -350,6 +351,7 @@ class EngineEntry:
         "audio_tts",
         "audio_sts",
         "decision",
+        "image",
     ]  # Model type
     engine_type: Literal[
         "batched",
@@ -361,6 +363,7 @@ class EngineEntry:
         "audio_tts",
         "audio_sts",
         "decision",
+        "image",
     ]  # Engine type to use
     estimated_size: int  # Pre-calculated from safetensors (bytes)
     text_only_size: int = 0  # Language-only estimate for VLM checkpoints (0 = n/a)
@@ -396,6 +399,7 @@ class EngineEntry:
         | STTEngine
         | STSEngine
         | TTSEngine
+        | ImageGenEngine
         | None
     ) = None  # Loaded engine instance
     last_access: float = 0.0  # Latest load/acquire/release for LRU and TTL
@@ -1302,6 +1306,9 @@ class EnginePool:
         add("embedding_audio_enabled", audio_active)
         if audio_active:
             add("embedding_audio_max_seconds", data.get("embedding_audio_max_seconds"))
+        if entry is not None and entry.engine_type == "image":
+            add("image_quantize", data.get("image_quantize"))
+            add("image_a8", data.get("image_a8") is not False)
 
         # Load-time model variants. Dependent fields only matter when their
         # feature is active; stale draft paths or tuning defaults must not
@@ -1643,7 +1650,38 @@ class EnginePool:
         "audio_tts": "audio_tts",
         "audio_sts": "audio_sts",
         "decision": "decision",
+        "image": "image",
     }
+
+    @staticmethod
+    def _image_quantize_setting(settings: object | None) -> int | None:
+        """Resolve the per-model image quantization (None = bf16)."""
+        from .image_gen import DEFAULT_IMAGE_QUANTIZE
+
+        value = getattr(settings, "image_quantize", None) if settings else None
+        if value is None:
+            return DEFAULT_IMAGE_QUANTIZE
+        value = int(value)
+        return None if value in (0, 16) else value
+
+    def refresh_image_estimate(
+        self, entry: EngineEntry, settings: object | None = None
+    ) -> None:
+        """Re-estimate an image model's footprint for its quantization setting."""
+        if entry.engine_type != "image":
+            return
+        from .model_discovery import estimate_image_model_size
+
+        quantize = self._image_quantize_setting(settings)
+        try:
+            entry.estimated_size = estimate_image_model_size(
+                Path(entry.model_path), quantize or 0
+            )
+        except (OSError, ValueError) as e:
+            logger.debug("Image size estimate failed for %s: %s", entry.model_id, e)
+            return
+        # The learned size belonged to the previous quantization.
+        entry.actual_size = None
 
     @staticmethod
     def _entry_is_diffusion_model(entry: EngineEntry) -> bool:
@@ -1661,6 +1699,8 @@ class EnginePool:
         """
         for model_id, entry in self._entries.items():
             settings = settings_manager.get_settings(model_id)
+            if entry.engine_type == "image" and settings.image_quantize is not None:
+                self.refresh_image_estimate(entry, settings)
             if settings.model_type_override:
                 entry.model_type = settings.model_type_override
                 entry.engine_type = self._MODEL_TYPE_TO_ENGINE.get(
@@ -1942,9 +1982,13 @@ class EnginePool:
         """Drop stale unloaded entries whose backing model directory vanished."""
         model_path = Path(entry.model_path)
         source = entry.source_path
+        # Image models (diffusers / mflux layouts) have no root config.json.
+        has_manifest = (model_path / "config.json").exists() or (
+            entry.engine_type == "image" and model_path.is_dir()
+        )
         if (
             model_path.exists()
-            and (model_path / "config.json").exists()
+            and has_manifest
             and (source is None or Path(source).exists())
         ):
             return
@@ -2729,6 +2773,7 @@ class EnginePool:
         | STTEngine
         | STSEngine
         | TTSEngine
+        | ImageGenEngine
     ):
         """
         Get or load engine for the specified model.
@@ -4326,6 +4371,17 @@ class EnginePool:
                     engine = STTEngine(model_name=entry.model_path)
                 elif entry.engine_type == "audio_tts":
                     engine = TTSEngine(model_name=entry.model_path)
+                elif entry.engine_type == "image":
+                    engine = ImageGenEngine(
+                        model_name=entry.model_path,
+                        quantize=self._image_quantize_setting(model_settings),
+                        accel={
+                            "a8": getattr(model_settings, "image_a8", None) is not False,
+                            "step_cache": bool(
+                                getattr(model_settings, "image_step_cache", False)
+                            ),
+                        },
+                    )
                 elif entry.engine_type == "audio_sts":
                     engine = STSEngine(
                         model_name=entry.model_path,

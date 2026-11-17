@@ -139,6 +139,11 @@ cluster = [
     # working (see omlx/cluster/discovery.py).
     "zeroconf>=0.131.0",
 ]
+image = [
+    # Text-to-image diffusion (Krea 2, ...) via mflux's native MLX models.
+    # mflux pins mlx<0.33, compatible with the mlx==0.32.4 pin above.
+    "mflux==0.24.0",
+]
 modelscope = [
     "modelscope>=1.28.0",
 ]
@@ -223,7 +228,9 @@ Documentation = "https://github.com/jundot/omlx#readme"
 Repository = "https://github.com/jundot/omlx"
 
 [project.scripts]
-omlx = "omlx.cli:main"
+# Fork build: installed as `my-omlx` so it never shadows the official `omlx`
+# (Homebrew / oMLX.app). Config and data paths are shared with the official CLI.
+my-omlx = "omlx.cli:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "omlx._version.__version__"}

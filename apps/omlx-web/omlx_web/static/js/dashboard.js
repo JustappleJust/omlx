@@ -326,6 +326,11 @@
                 trust_remote_code: false,
                 embedding_audio_enabled: false,
                 embedding_audio_max_seconds: null,
+                image_quantize: '',
+                image_default_steps: null,
+                image_default_size: '',
+                image_a8: 'on',
+                image_step_cache: 'off',
             },
             savingModelSettings: false,
             settingsApply: { open: false, mode: 'optimal', phase: 'input', recipeText: '', result: null, candidates: null, error: '' },
@@ -2330,6 +2335,11 @@
                     trust_remote_code: s.trust_remote_code || false,
                     embedding_audio_enabled: s.embedding_audio_enabled || false,
                     embedding_audio_max_seconds: s.embedding_audio_max_seconds ?? null,
+                    image_quantize: s.image_quantize != null ? String(s.image_quantize) : '',
+                    image_default_steps: s.image_default_steps ?? null,
+                    image_default_size: s.image_default_size || '',
+                    image_a8: s.image_a8 === false ? 'off' : 'on',
+                    image_step_cache: s.image_step_cache ? 'on' : 'off',
                 };
             },
 
@@ -3768,6 +3778,16 @@
                         embedding_audio_enabled: !!ms.embedding_audio_enabled,
                         // Empty keeps the 30 s processor default.
                         embedding_audio_max_seconds: audioSeconds > 0 ? audioSeconds : null,
+                    });
+                }
+                if (this.selectedModel?.model_type === 'image') {
+                    const steps = Number(ms.image_default_steps);
+                    Object.assign(payload, {
+                        image_quantize: ms.image_quantize === '' || ms.image_quantize == null ? null : Number(ms.image_quantize),
+                        image_default_steps: steps > 0 ? steps : null,
+                        image_default_size: (ms.image_default_size || '').trim() || null,
+                        image_a8: ms.image_a8 !== 'off',
+                        image_step_cache: ms.image_step_cache === 'on',
                     });
                 }
                 return payload;

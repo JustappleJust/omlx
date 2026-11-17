@@ -364,6 +364,51 @@
                                 <option value="audio_tts">{{ t('modal.model_settings.model_type_audio_tts') }}</option>
                                 <option value="audio_sts">{{ t('modal.model_settings.model_type_audio_sts') }}</option>
                                 <option value="decision">{{ t('modal.model_settings.model_type_decision') }}</option>
+                                <option value="image">{{ t('modal.model_settings.model_type_image') }}</option>
+                            </select>
+                        </label>
+                        <!-- Image generation: load-time quantization and request defaults -->
+                        <label class="{{ ms_row }}" x-show="selectedModel?.model_type === 'image'" x-cloak>
+                            <span class="min-w-0">
+                                <span class="block {{ ms_row_label }}">{{ t('modal.model_settings.image_quantize') }}</span>
+                                <span class="{{ ms_row_hint }}">{{ t('modal.model_settings.image_quantize_hint') }}</span>
+                            </span>
+                            <select x-model="modelSettings.image_quantize" class="{{ ms_field_short }}">
+                                <option value="">{{ t('modal.model_settings.image_quantize_default') }}</option>
+                                <option value="0">bf16</option>
+                                <option value="8">8-bit</option>
+                                <option value="6">6-bit</option>
+                                <option value="4">4-bit</option>
+                            </select>
+                        </label>
+                        <label class="{{ ms_row }}" x-show="selectedModel?.model_type === 'image'" x-cloak>
+                            <span class="block {{ ms_row_label }}">{{ t('modal.model_settings.image_default_steps') }}</span>
+                            <input type="number" x-model.number="modelSettings.image_default_steps" placeholder="{{ t('modal.model_settings.placeholder_default') }}" min="1" max="100"
+                                   class="{{ ms_field_short }}">
+                        </label>
+                        <label class="{{ ms_row }}" x-show="selectedModel?.model_type === 'image'" x-cloak>
+                            <span class="block {{ ms_row_label }}">{{ t('modal.model_settings.image_default_size') }}</span>
+                            <input type="text" x-model="modelSettings.image_default_size" placeholder="1024x1024"
+                                   class="{{ ms_field_short }}">
+                        </label>
+                        <label class="{{ ms_row }}" x-show="selectedModel?.model_type === 'image'" x-cloak>
+                            <span class="min-w-0">
+                                <span class="block {{ ms_row_label }}">{{ t('modal.model_settings.image_a8') }}</span>
+                                <span class="{{ ms_row_hint }}">{{ t('modal.model_settings.image_a8_hint') }}</span>
+                            </span>
+                            <select x-model="modelSettings.image_a8" class="{{ ms_field_short }}">
+                                <option value="on">{{ t('modal.model_settings.image_on') }}</option>
+                                <option value="off">{{ t('modal.model_settings.image_off') }}</option>
+                            </select>
+                        </label>
+                        <label class="{{ ms_row }}" x-show="selectedModel?.model_type === 'image'" x-cloak>
+                            <span class="min-w-0">
+                                <span class="block {{ ms_row_label }}">{{ t('modal.model_settings.image_step_cache') }}</span>
+                                <span class="{{ ms_row_hint }}">{{ t('modal.model_settings.image_step_cache_hint') }}</span>
+                            </span>
+                            <select x-model="modelSettings.image_step_cache" class="{{ ms_field_short }}">
+                                <option value="off">{{ t('modal.model_settings.image_off') }}</option>
+                                <option value="on">{{ t('modal.model_settings.image_on') }}</option>
                             </select>
                         </label>
                         <!-- Embedding context window -->
