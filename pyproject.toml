@@ -230,9 +230,9 @@ Documentation = "https://github.com/jundot/omlx#readme"
 Repository = "https://github.com/jundot/omlx"
 
 [project.scripts]
-# Fork build: installed as `my-omlx` so it never shadows the official `omlx`
+# Fork build: installed as `j-omlx` so it never shadows the official `omlx`
 # (Homebrew / oMLX.app). Config and data paths are shared with the official CLI.
-my-omlx = "omlx.cli:main"
+j-omlx = "omlx.cli:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "omlx._version.__version__"}
