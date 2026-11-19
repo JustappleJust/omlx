@@ -125,6 +125,13 @@ EXCLUDED_FROM_PROFILES = frozenset(
         "embedding_audio_max_seconds",
         # Image models: quantization changes residency; explicit per model.
         "image_quantize",
+        # Image models: request defaults and acceleration choices belong to the
+        # checkpoint/family they were tuned for, not to a reusable profile.
+        "image_default_steps",
+        "image_default_guidance",
+        "image_default_size",
+        "image_a8",
+        "image_step_cache",
     }
 )
 
