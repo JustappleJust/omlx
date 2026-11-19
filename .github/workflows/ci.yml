@@ -65,7 +65,9 @@ jobs:
           rm -rf apps
           python -m pytest tests/ --collect-only -q > /dev/null
           mkdir -p "$RUNNER_TEMP/models"
-          OMLX_BASE_PATH="$RUNNER_TEMP/omlx" omlx serve \
+          # The fork installs the CLI as `my-omlx` so it never shadows the
+          # official Homebrew / oMLX.app `omlx`.
+          OMLX_BASE_PATH="$RUNNER_TEMP/omlx" my-omlx serve \
             --model-dir "$RUNNER_TEMP/models" --port 18765 --api-key ci-smoke-key \
             > "$RUNNER_TEMP/serve.log" 2>&1 &
           server_pid=$!
