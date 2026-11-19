@@ -6465,11 +6465,11 @@ class Scheduler:
             rid != request_id for rid in self.running
         ):
             return 0
+        self._moe_offload_slots_released = True
         released = self.moe_offload_release(
             need_bytes, lambda: Scheduler._clear_cache(self)
         )
         if released:
-            self._moe_offload_slots_released = True
             self._reclaim_prefill_headroom()
         return released
 
@@ -16376,6 +16376,7 @@ class Scheduler:
         self.model = None
         self.tokenizer = None
         self._logprob_detokenizer = None
+        self._prefill_helper_retry = None  # Its helper holds the language model.
 
         # Release all cache-related references for GC
         if self._boundary_snapshot_store is not None:
