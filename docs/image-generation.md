@@ -175,6 +175,35 @@ other GPU work, so treat them as approximate.
 
 Lossy step skipping is available for Qwen-Image as an opt-in (see settings).
 
+### Benchmarking
+
+`scripts/bench_image.py` (or `make bench-image MODEL=<path> OUT=<dir>`) reports
+load time, resident and peak memory, p50/p90 latency, the per-step and
+encode/decode split, steps/s and images/min:
+
+```bash
+make bench-image MODEL=~/.omlx/models/mflux-community/krea-2-turbo-mflux-q4 \
+  OUT=/tmp/bench/krea ARGS="--sizes 512x512 --repeat 3 --concurrent 2"
+```
+
+- `--sizes` / `--steps-list` run a grid; `--edit` adds the edit path.
+- `--concurrent K` runs one warm-up request, then K identical requests through
+  the engine's queue. It reports the speedup over K serial runs, the engine's
+  batching counters, and the minimum PSNR against the serial image.
+- `--baseline report.json --fail-ratio 1.10` fails when a run regresses
+  against a previous report; `--fail-p50` sets an absolute limit.
+- `--compare DIR` adds PSNR against a previous run's images.
+
+Krea 2 and FLUX.3 merge compatible requests into one denoise pass; Qwen-Image
+2.1 stays single-request because its layout has no batch axis. With A8 on,
+Krea 2 reproduces a single run exactly for identical requests (measured PSNR
+inf at 256²/2 and 512²/4 steps); FLUX.3's per-block compile is not
+batch-invariant (30 dB for identical requests). Different requests in one
+batch can shift each row (25-28 dB on Krea 2); with A8 off, the quantized GEMM
+tile also changes with the row count (26-29 dB). Two different seeds are 12 dB
+apart for reference. Batching is a throughput knob, not a bit-reproducibility
+mode.
+
 ## Memory behaviour
 
 Each adapter describes **memory plans** for a request size: execution modes

@@ -68,7 +68,7 @@ brew services start omlx
 
 # オプション: MCP（Model Context Protocol）サポート。読み込むには再起動
 /opt/homebrew/opt/omlx/libexec/bin/pip install mcp
-omlx restart
+j-omlx restart
 ```
 
 ### ソースからインストール
@@ -78,7 +78,7 @@ git clone https://github.com/jundot/omlx.git
 cd omlx
 make install                # Web UIとネイティブカスタムカーネルを含むeditableインストール
 # フルXcodeがない場合は make install-no-kernels でカーネルなしでインストール
-make mcp                    # オプション: MCP サポートを追加。`omlx serve` の再起動で読み込み
+make mcp                    # オプション: MCP サポートを追加。`j-omlx serve` の再起動で読み込み
 ```
 
 macOS 15.0+（Sequoia）、Python 3.11–3.13、Apple Silicon（M1/M2/M3/M4/M5）が必要です。
@@ -103,7 +103,7 @@ ApplicationsフォルダからoMLXを起動します。ウェルカム画面が3
 ### CLI
 
 ```bash
-omlx serve --model-dir ~/models
+j-omlx serve --model-dir ~/models
 ```
 
 サーバーがサブディレクトリからLLM、VLM、エンベディングモデル、リランカーを自動的に検出します。OpenAI互換クライアントから`http://localhost:8000/v1`に接続できます。内蔵チャットUIも`http://localhost:8000/admin/chat`で利用可能です。
@@ -119,7 +119,7 @@ brew services restart omlx  # 再起動
 brew services info omlx     # ステータス確認
 ```
 
-サービスはデフォルト設定で`omlx serve`を実行します（`~/.omlx/models`、ポート8000）。カスタマイズするには、`omlx serve --model-dir /your/path`を一度実行して`~/.omlx/settings.json`に設定を保存してください。
+サービスはデフォルト設定で`j-omlx serve`を実行します（`~/.omlx/models`、ポート8000）。カスタマイズするには、`j-omlx serve --model-dir /your/path`を一度実行して`~/.omlx/settings.json`に設定を保存してください。
 
 ログは2か所に記録されます：
 - **サービスログ**: `$(brew --prefix)/var/log/omlx.log`（stdout/stderr）
@@ -286,29 +286,29 @@ mlx-lmで利用可能なすべての関数呼び出し形式、JSONスキーマ�
 
 ```bash
 # ロード済みモデルのメモリ上限
-omlx serve --model-dir ~/models --max-model-memory 32GB
+j-omlx serve --model-dir ~/models --max-model-memory 32GB
 
 # プロセスレベルのメモリ上限（デフォルト: auto = RAM - 8GB）
-omlx serve --model-dir ~/models --max-process-memory 80%
+j-omlx serve --model-dir ~/models --max-process-memory 80%
 
 # KVブロック用SSDキャッシュを有効化
-omlx serve --model-dir ~/models --paged-ssd-cache-dir ~/.omlx/cache
+j-omlx serve --model-dir ~/models --paged-ssd-cache-dir ~/.omlx/cache
 
 # メモリ内ホットキャッシュサイズの設定
-omlx serve --model-dir ~/models --hot-cache-max-size 20%
+j-omlx serve --model-dir ~/models --hot-cache-max-size 20%
 
 # 最大同時リクエスト数の調整（デフォルト: 8）
-omlx serve --model-dir ~/models --max-concurrent-requests 16
+j-omlx serve --model-dir ~/models --max-concurrent-requests 16
 
 # MCPツールの使用
-omlx serve --model-dir ~/models --mcp-config mcp.json
+j-omlx serve --model-dir ~/models --mcp-config mcp.json
 
 # APIキー認証
-omlx serve --model-dir ~/models --api-key your-secret-key
+j-omlx serve --model-dir ~/models --api-key your-secret-key
 # Localhost専用: 管理画面のグローバル設定で検証をスキップ
 
 # Web UIなしで推論・管理APIのみ起動（設定には保存されません）
-omlx serve --model-dir ~/models --headless
+j-omlx serve --model-dir ~/models --headless
 ```
 
 すべての設定は`/admin`のWeb管理画面からも設定できます。設定は`~/.omlx/settings.json`に保存され、CLIフラグが優先されます。

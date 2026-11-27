@@ -69,7 +69,7 @@ brew services start omlx
 
 # Optionnel : support MCP (Model Context Protocol), puis redémarrer pour le charger
 /opt/homebrew/opt/omlx/libexec/bin/pip install mcp
-omlx restart
+j-omlx restart
 ```
 
 ### Depuis les sources
@@ -79,7 +79,7 @@ git clone https://github.com/jundot/omlx.git
 cd omlx
 make install                # Installation editable avec l'interface web et les kernels natifs
 # Sans Xcode complet : make install-no-kernels installe sans les kernels
-make mcp                    # Optionnel : support MCP, redémarrer `omlx serve` pour le charger
+make mcp                    # Optionnel : support MCP, redémarrer `j-omlx serve` pour le charger
 ```
 
 Nécessite macOS 15.0+ (Sequoia), Python 3.11–3.13, et Apple Silicon (M1/M2/M3/M4/M5).
@@ -104,7 +104,7 @@ Lancez oMLX depuis votre dossier Applications. L'écran de bienvenue vous guide 
 ### CLI
 
 ```bash
-omlx serve --model-dir ~/models
+j-omlx serve --model-dir ~/models
 ```
 
 Le serveur détecte automatiquement les LLM, VLM, modèles d'embedding et rerankers depuis les sous-répertoires. N'importe quel client compatible OpenAI peut se connecter à `http://localhost:8000/v1`. Une interface de chat intégrée est aussi disponible à `http://localhost:8000/admin/chat`.
@@ -120,7 +120,7 @@ brew services restart omlx  # Redémarrer
 brew services info omlx     # Vérifier le statut
 ```
 
-Le service lance `omlx serve` avec les paramètres par défaut (`~/.omlx/models`, port 8000). Pour personnaliser, lancez `omlx serve --model-dir /votre/chemin` une fois pour sauvegarder les paramètres dans `~/.omlx/settings.json`.
+Le service lance `j-omlx serve` avec les paramètres par défaut (`~/.omlx/models`, port 8000). Pour personnaliser, lancez `j-omlx serve --model-dir /votre/chemin` une fois pour sauvegarder les paramètres dans `~/.omlx/settings.json`.
 
 Les logs sont écrits à deux endroits :
 - **Log du service** : `$(brew --prefix)/var/log/omlx.log` (stdout/stderr)
@@ -286,32 +286,32 @@ Les modèles sont auto-détectés par type. Vous pouvez aussi télécharger des 
 
 ```bash
 # Limite mémoire pour les modèles chargés
-omlx serve --model-dir ~/models --max-model-memory 32GB
+j-omlx serve --model-dir ~/models --max-model-memory 32GB
 
 # Limite mémoire au niveau du processus (par défaut : auto = RAM - 8 Go)
-omlx serve --model-dir ~/models --max-process-memory 80%
+j-omlx serve --model-dir ~/models --max-process-memory 80%
 
 # Activer le cache SSD pour les blocs KV
-omlx serve --model-dir ~/models --paged-ssd-cache-dir ~/.omlx/cache
+j-omlx serve --model-dir ~/models --paged-ssd-cache-dir ~/.omlx/cache
 
 # Définir la taille du cache chaud en mémoire
-omlx serve --model-dir ~/models --hot-cache-max-size 20%
+j-omlx serve --model-dir ~/models --hot-cache-max-size 20%
 
 # Ajuster le nombre max de requêtes simultanées (par défaut : 8)
-omlx serve --model-dir ~/models --max-concurrent-requests 16
+j-omlx serve --model-dir ~/models --max-concurrent-requests 16
 
 # Avec les outils MCP
-omlx serve --model-dir ~/models --mcp-config mcp.json
+j-omlx serve --model-dir ~/models --mcp-config mcp.json
 
 # Endpoint miroir HuggingFace (pour les régions restreintes)
-omlx serve --model-dir ~/models --hf-endpoint https://hf-mirror.com
+j-omlx serve --model-dir ~/models --hf-endpoint https://hf-mirror.com
 
 # Authentification par clé API
-omlx serve --model-dir ~/models --api-key votre-clé-secrète
+j-omlx serve --model-dir ~/models --api-key votre-clé-secrète
 # Localhost uniquement : désactivez la vérification via les paramètres globaux du panneau d'admin
 
 # API d'inférence et d'administration seulement, sans l'interface web (non enregistré dans les réglages)
-omlx serve --model-dir ~/models --headless
+j-omlx serve --model-dir ~/models --headless
 ```
 
 Tous les paramètres peuvent aussi être configurés depuis le panneau d'admin web sur `/admin`. Les paramètres sont sauvegardés dans `~/.omlx/settings.json`, et les flags CLI ont la priorité.

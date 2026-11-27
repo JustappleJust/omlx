@@ -4918,7 +4918,7 @@ async def restart_server(is_admin: bool = Depends(require_admin)):
     backoff (~5s).
 
     Gated by the ``OMLX_SUPERVISED`` environment variable so plain
-    ``omlx serve`` (no supervisor) returns 503 rather than killing the
+    ``j-omlx serve`` (no supervisor) returns 503 rather than killing the
     server with no respawn path.
     """
     supervisor = os.environ.get("OMLX_SUPERVISED")

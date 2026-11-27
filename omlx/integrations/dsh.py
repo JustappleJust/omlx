@@ -16,7 +16,7 @@ managed blocks are rewritten, a timestamped backup is taken, and the result is
 re-parsed before it replaces the original. The protocol defaults to
 ``openai-responses`` (``OMLX_DSH_API`` switches it).
 
-Usage: ``omlx launch dsh [--model <id>]``
+Usage: ``j-omlx launch dsh [--model <id>]``
 """
 
 from __future__ import annotations
@@ -74,9 +74,9 @@ _PATCH_ENTRY_HEADER = (
     "# a top-level YAML array of loader patch entries (id-targeted config\n"
     "# overrides, disables, and insert lists; `!!js` expressions allowed).\n"
 )
-_LLM_PI_AI_ENTRY_COMMENT = "# oMLX provider route, written by `omlx launch dsh`.\n"
+_LLM_PI_AI_ENTRY_COMMENT = "# oMLX provider route, written by `j-omlx launch dsh`.\n"
 _AGENT_DEFAULT_ENTRY_COMMENT = (
-    "# Default model for new sessions, written by `omlx launch dsh`.\n"
+    "# Default model for new sessions, written by `j-omlx launch dsh`.\n"
 )
 
 _LLM_PI_AI_ENTRY_ID = "llm-pi-ai"

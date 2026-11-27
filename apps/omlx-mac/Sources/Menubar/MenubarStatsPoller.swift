@@ -189,7 +189,11 @@ final class MenubarStatsPoller {
                 activity: NonStreamingActivity
             ) -> LiveActivity {
                 let elapsed = activity.elapsedSeconds.map(formatDuration)
-                let activityDetail = activity.detail ?? activity.kind ?? "Active request"
+                let activityDetail = activity.kind == "image"
+                    ? String(localized: "status.active_now.badge.generating",
+                             defaultValue: "Generating",
+                             comment: "Active Now badge: model currently generating tokens")
+                    : (activity.detail ?? activity.kind ?? "Active request")
                 var detailParts = [modelID, activityDetail]
                 if let elapsed {
                     detailParts.append(elapsed)

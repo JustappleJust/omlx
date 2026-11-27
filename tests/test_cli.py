@@ -134,7 +134,7 @@ class TestLifecycleCommand:
         return SimpleNamespace(**values)
 
     def test_app_bundle_stop_without_running_app_is_success(self, monkeypatch, capsys):
-        """`omlx stop` must not launch the macOS app just to stop it."""
+        """`j-omlx stop` must not launch the macOS app just to stop it."""
         from omlx import cli
         import omlx.utils.install as install
 
@@ -148,7 +148,7 @@ class TestLifecycleCommand:
         cli._open_macos_app.assert_not_called()
 
     def test_app_bundle_start_sends_command_and_waits(self, monkeypatch):
-        """`omlx start` asks the app to start and waits for a running state."""
+        """`j-omlx start` asks the app to start and waits for a running state."""
         from omlx import cli
         import omlx.utils.install as install
 
@@ -909,7 +909,7 @@ class TestLaunchCommandFunction:
         assert "Cannot launch Claude Code with model 'only-32k'" in output
 
     def test_launch_command_shows_picker_and_keeps_saved_tiers(self):
-        """Bare `omlx launch claude` shows the picker for the default model and keeps the saved tier models (#3543)."""
+        """Bare `j-omlx launch claude` shows the picker for the default model and keeps the saved tier models (#3543)."""
         from omlx.cli import launch_command
 
         integration = MagicMock()
@@ -1057,7 +1057,7 @@ class TestLaunchCommandFunction:
 
 
 class TestLaunchArgvParsing:
-    """Tests for top-level argv parsing of `omlx launch ...`."""
+    """Tests for top-level argv parsing of `j-omlx launch ...`."""
 
     def test_launch_removes_forwarding_separator_after_known_option(self, monkeypatch):
         """The oMLX separator must not reach the launched tool."""

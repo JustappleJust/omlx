@@ -110,7 +110,7 @@ final class IntegrationsScreenVM {
     private(set) var serverHost: String = "127.0.0.1"
     private(set) var serverPort: Int = 8000
     private(set) var serverApiKeySet: Bool = false
-    private(set) var cliPrefix: String = "omlx"
+    private(set) var cliPrefix: String = "j-omlx"
 
     /// Popup options: a leading "Select model…" placeholder + every model id.
     var modelOptions: [(String, String)] {
@@ -163,13 +163,13 @@ final class IntegrationsScreenVM {
         return "\(missing)\n\(warning)"
     }
 
-    /// Composed `omlx launch claude` command. Claude tier selections are
+    /// Composed `j-omlx launch claude` command. Claude tier selections are
     /// persisted in settings, so the launcher reads them without extra flags.
     var claudeLaunchCommand: String {
         "\(cliCommandPrefix) launch claude"
     }
 
-    /// Composed `omlx launch claude_desktop` command. Launches Claude Desktop
+    /// Composed `j-omlx launch claude_desktop` command. Launches Claude Desktop
     /// pointed at the oMLX gateway. Mirrors `claudeDesktopCommand` in
     /// `omlx/admin/static/js/dashboard.js`.
     var claudeDesktopLaunchCommand: String {
@@ -628,7 +628,7 @@ final class IntegrationsScreenVM {
     // MARK: - Shell helpers
 
     private var cliCommandPrefix: String {
-        cliPrefix == "omlx" ? cliPrefix : Self.shellQuote(cliPrefix)
+        cliPrefix == "j-omlx" ? cliPrefix : Self.shellQuote(cliPrefix)
     }
 
     /// POSIX single-quote escape — mirrors `shellQuote` in dashboard.js so

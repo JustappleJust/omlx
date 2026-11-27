@@ -18,13 +18,13 @@ Features:
 
 Usage:
     # Multi-model serving
-    omlx serve --model-dir /path/to/models --max-model-memory 32GB
+    j-omlx serve --model-dir /path/to/models --max-model-memory 32GB
 
     # With pinned models
-    omlx serve --model-dir /path/to/models --max-model-memory 48GB --pin llama-3b,qwen-7b
+    j-omlx serve --model-dir /path/to/models --max-model-memory 48GB --pin llama-3b,qwen-7b
 
     # With MCP tools
-    omlx serve --model-dir /path/to/models --max-model-memory 32GB --mcp-config mcp.json
+    j-omlx serve --model-dir /path/to/models --max-model-memory 32GB --mcp-config mcp.json
 
 The server provides:
     - POST /v1/completions - Text completions
@@ -578,7 +578,7 @@ async def lifespan(app: FastAPI):
     try:
         from .cluster.worker_shim import ensure_cluster_python_shim
 
-        # Fork build (`my-omlx`): don't take the shim over from the official
+        # Fork build (`j-omlx`): don't take the shim over from the official
         # oMLX app / Homebrew install that shares ~/.omlx.
         ensure_cluster_python_shim(keep_foreign=True)
     except (ImportError, OSError, RuntimeError) as exc:

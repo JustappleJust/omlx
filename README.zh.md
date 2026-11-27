@@ -68,7 +68,7 @@ brew services start omlx
 
 # 可选：MCP（Model Context Protocol）支持，安装后重启以加载
 /opt/homebrew/opt/omlx/libexec/bin/pip install mcp
-omlx restart
+j-omlx restart
 ```
 
 ### 从源码安装
@@ -78,7 +78,7 @@ git clone https://github.com/jundot/omlx.git
 cd omlx
 make install                # 以 editable 模式安装（含 Web UI 和原生自定义内核）
 # 没有完整 Xcode 时，用 make install-no-kernels 安装不含内核的版本
-make mcp                    # 可选：添加 MCP 支持，重启 `omlx serve` 后加载
+make mcp                    # 可选：添加 MCP 支持，重启 `j-omlx serve` 后加载
 ```
 
 需要 macOS 15.0+ (Sequoia)、Python 3.11–3.13 和 Apple Silicon（M1/M2/M3/M4/M5）。
@@ -103,7 +103,7 @@ make mcp                    # 可选：添加 MCP 支持，重启 `omlx serve` �
 ### CLI
 
 ```bash
-omlx serve --model-dir ~/models
+j-omlx serve --model-dir ~/models
 ```
 
 服务器会自动从子目录中发现 LLM、VLM、嵌入模型和重排序模型。任何 OpenAI 兼容客户端都可以连接到 `http://localhost:8000/v1`。内置聊天 UI 也可在 `http://localhost:8000/admin/chat` 使用。
@@ -119,7 +119,7 @@ brew services restart omlx  # 重启
 brew services info omlx     # 查看状态
 ```
 
-服务使用默认配置运行 `omlx serve`（`~/.omlx/models`，端口 8000）。要自定义，可以运行一次 `omlx serve --model-dir /your/path` 将设置保存到 `~/.omlx/settings.json`。
+服务使用默认配置运行 `j-omlx serve`（`~/.omlx/models`，端口 8000）。要自定义，可以运行一次 `j-omlx serve --model-dir /your/path` 将设置保存到 `~/.omlx/settings.json`。
 
 日志写入两个位置：
 - **服务日志**: `$(brew --prefix)/var/log/omlx.log`（stdout/stderr）
@@ -292,32 +292,32 @@ OpenAI 和 Anthropic API 的直接替代品。支持流式使用统计（`stream
 
 ```bash
 # 已加载模型的内存限制
-omlx serve --model-dir ~/models --max-model-memory 32GB
+j-omlx serve --model-dir ~/models --max-model-memory 32GB
 
 # 进程级内存限制（默认：auto = RAM - 8GB）
-omlx serve --model-dir ~/models --max-process-memory 80%
+j-omlx serve --model-dir ~/models --max-process-memory 80%
 
 # 启用 KV 块的 SSD 缓存
-omlx serve --model-dir ~/models --paged-ssd-cache-dir ~/.omlx/cache
+j-omlx serve --model-dir ~/models --paged-ssd-cache-dir ~/.omlx/cache
 
 # 设置内存热缓存大小
-omlx serve --model-dir ~/models --hot-cache-max-size 20%
+j-omlx serve --model-dir ~/models --hot-cache-max-size 20%
 
 # 调整最大并发请求数（默认: 8）
-omlx serve --model-dir ~/models --max-concurrent-requests 16
+j-omlx serve --model-dir ~/models --max-concurrent-requests 16
 
 # 使用 MCP 工具
-omlx serve --model-dir ~/models --mcp-config mcp.json
+j-omlx serve --model-dir ~/models --mcp-config mcp.json
 
 # HuggingFace 镜像端点（适用于受限地区）
-omlx serve --model-dir ~/models --hf-endpoint https://hf-mirror.com
+j-omlx serve --model-dir ~/models --hf-endpoint https://hf-mirror.com
 
 # API 密钥认证
-omlx serve --model-dir ~/models --api-key your-secret-key
+j-omlx serve --model-dir ~/models --api-key your-secret-key
 # 仅限 Localhost：在管理后台全局设置中跳过验证
 
 # 仅运行推理和管理 API，不启用 Web UI（不会保存到设置）
-omlx serve --model-dir ~/models --headless
+j-omlx serve --model-dir ~/models --headless
 ```
 
 以上所有设置也可以在 `/admin` 的 Web 管理后台中配置。设置保存在 `~/.omlx/settings.json`，CLI 参数优先级更高。

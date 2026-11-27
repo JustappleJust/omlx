@@ -11,18 +11,23 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
+import mlx.core as mx
+
 from ._mflux import (
     MFLUX_INSTALL_HINT,
-    apply_load_accel,
     BoundedCache,
+    apply_load_accel,
     image_digest,
     is_prequantized_dir,
+    partition_by,
     read_json,
     run_context,
+    tiling_context,
 )
 from .base import (
     ImageCapabilities,
     ImageDefaults,
+    ImageGenerationCancelled,
     ImageGenParams,
     ImageModelAdapter,
     MemoryPlan,
@@ -47,6 +52,7 @@ class Flux3KleinAdapter(ImageModelAdapter):
         strength=False,
         negative_prompt=False,
     )
+    supports_batching = True
 
     # ---- detection -----------------------------------------------------
 
@@ -83,6 +89,7 @@ class Flux3KleinAdapter(ImageModelAdapter):
         # Calibrated on M5 Max (mflux 0.24, 8-bit). Each reference adds up to
         # one canvas worth of tokens (multi-reference: <= 1 MP each).
         tokens = (width // 16) * (height // 16) * (1 + n_refs)
+        extra_row = int(0.30e6 * (width // 16) * (height // 16) * 1.15)
         denoise = int((0.8e9 + 0.30e6 * tokens) * 1.15)
 
         # FLUX.2 VAE decode; tiled decode bounds it by the tile area.
@@ -90,16 +97,18 @@ class Flux3KleinAdapter(ImageModelAdapter):
             return int((0.4e9 + 3.2e9 * pixels / 1e6) * 1.15)
 
         pixels = width * height
-        plans = [MemoryPlan("full", max(denoise, decode_peak(pixels)), {"tile": None})]
+        plans = [MemoryPlan("full", max(denoise, decode_peak(pixels)), {"tile": None}, extra_row_bytes=extra_row)]
         for tile in (512, 256):
             if tile * tile < pixels:
                 plans.append(
-                    MemoryPlan(f"vae_tile_{tile}", max(denoise, decode_peak(tile * tile)), {"tile": tile})
+                    MemoryPlan(f"vae_tile_{tile}", max(denoise, decode_peak(tile * tile)), {"tile": tile}, extra_row_bytes=extra_row)
                 )
         return plans
 
     def edit_canvas(self, references: list[Any]) -> tuple[int, int]:
-        from mflux.models.flux3.latent_creator.flux3_reference_images import Flux3ReferenceImages
+        from mflux.models.flux3.latent_creator.flux3_reference_images import (
+            Flux3ReferenceImages,
+        )
 
         prepared, _ = Flux3ReferenceImages.prepare([r.convert("RGB") for r in references])
         return prepared[0].size
@@ -138,7 +147,9 @@ class Flux3KleinAdapter(ImageModelAdapter):
         return model
 
     def _encode_references(self, model: Any, references: list[Any]):
-        from mflux.models.flux3.latent_creator.flux3_reference_images import Flux3ReferenceImages
+        from mflux.models.flux3.latent_creator.flux3_reference_images import (
+            Flux3ReferenceImages,
+        )
 
         images = [r.convert("RGB") for r in references]
         prepared, box = Flux3ReferenceImages.prepare(images)
@@ -184,6 +195,105 @@ class Flux3KleinAdapter(ImageModelAdapter):
                 crop_box=crop_box,
             )
         return result.image
+
+    def generate_batch(
+        self,
+        model: Any,
+        params_list: list[ImageGenParams],
+        on_step_list: list[StepCallback],
+        plan: Optional[MemoryPlan] = None,
+    ) -> list[Any]:
+        if len(params_list) == 1:
+            return super().generate_batch(model, params_list, on_step_list, plan)
+        from mflux.models.flux3.latent_creator.flux3_latent_creator import (
+            Flux3LatentCreator,
+        )
+        from mflux.models.flux3.model.flux3_scheduler.flux3_flow_map_scheduler import (
+            Flux3FlowMapScheduler,
+        )
+        from mflux.utils.image_util import ImageUtil
+
+        flow_map = model.transformer.flow_map
+        guidance = params_list[0].guidance if model.model_config.supports_guidance else None
+        encoded = [model._encode_prompt(params.prompt) for params in params_list]
+        uncond = None if flow_map else model._encode_prompt("")
+        groups = partition_by([int(tokens.shape[1]) for tokens, _ in encoded])
+        first = params_list[0]
+        latent_h, latent_w = Flux3LatentCreator.latent_shape(
+            first.height, first.width
+        )
+        latent_ids = Flux3LatentCreator.prepare_ids(latent_h, latent_w)
+        scheduler = Flux3FlowMapScheduler(num_inference_steps=first.steps)
+        predict = model._predict(model.transformer)
+        results: list[Any] = [None] * len(params_list)
+        with tiling_context(model, plan):
+            for indices in groups.values():
+                if len(indices) == 1:
+                    index = indices[0]
+                    results[index] = self.generate(
+                        model, params_list[index], on_step_list[index], plan
+                    )
+                    continue
+                latents = mx.concatenate(
+                    [
+                        Flux3LatentCreator.create_noise(
+                            params_list[index].seed, first.height, first.width
+                        )
+                        for index in indices
+                    ],
+                    axis=0,
+                )
+                text_tokens = mx.concatenate([encoded[i][0] for i in indices], axis=0)
+                text_ids = encoded[indices[0]][1]
+                uncond_tokens = (
+                    None
+                    if uncond is None
+                    else mx.concatenate([uncond[0]] * len(indices), axis=0)
+                )
+                uncond_ids = None if uncond is None else uncond[1]
+                active = list(indices)
+                for t in range(first.steps):
+                    velocity = predict(
+                        latents=latents,
+                        latent_ids=latent_ids,
+                        text_tokens=text_tokens,
+                        text_ids=text_ids,
+                        uncond_tokens=uncond_tokens,
+                        uncond_ids=uncond_ids,
+                        cond_tokens=None,
+                        cond_ids=None,
+                        guidance=guidance,
+                        timestep=scheduler.timesteps[t : t + 1],
+                        target_timestep=(
+                            scheduler.timesteps[t + 1 : t + 2] if flow_map else None
+                        ),
+                    )
+                    latents = scheduler.step(latents=latents, velocity=velocity, step=t)
+                    keep: list[int] = []
+                    survivors: list[int] = []
+                    for position, index in enumerate(active):
+                        try:
+                            on_step_list[index](t + 1, first.steps)
+                        except ImageGenerationCancelled:
+                            continue
+                        keep.append(position)
+                        survivors.append(index)
+                    if not survivors:
+                        return results
+                    if len(keep) != len(active):
+                        rows = mx.array(keep, dtype=mx.int32)
+                        latents = latents[rows]
+                        text_tokens = text_tokens[rows]
+                        if uncond_tokens is not None:
+                            uncond_tokens = uncond_tokens[rows]
+                        active = survivors
+                    mx.eval(latents)
+                for position, index in enumerate(active):
+                    decoded = model._decode_latents(
+                        latents[position : position + 1], latent_h, latent_w
+                    )
+                    results[index] = ImageUtil.to_pil(decoded)
+        return results
 
     def release(self, model: Any) -> None:
         for attr in ("prompt_cache", "_omlx_ref_cache"):

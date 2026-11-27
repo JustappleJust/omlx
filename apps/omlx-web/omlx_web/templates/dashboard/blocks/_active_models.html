@@ -250,7 +250,7 @@
                                 <span class="text-caption font-mono text-neutral-400 w-16 truncate" x-text="activity.request_id.substring(0, 8)"></span>
                                 <span class="inline-flex items-center gap-2 min-w-[120px] whitespace-nowrap">
                                     <span class="w-2 h-2 rounded-full flex-shrink-0" :class="activityDotClass(activity.last_activity_age_seconds)"></span>
-                                    <span class="text-caption text-green-700 font-medium" x-text="activity.detail || activity.kind || window.t('status.active_models.active')"></span>
+                                    <span class="text-caption text-green-700 font-medium" x-text="activity.kind === 'image' ? window.t('status.active_models.generating') : (activity.detail || activity.kind || window.t('status.active_models.active'))"></span>
                                 </span>
                                 <span x-show="formatActivityMetadata(activity)" class="text-caption text-neutral-400 whitespace-nowrap ml-2" x-text="formatActivityMetadata(activity)"></span>
                                 <span x-show="activity.elapsed_seconds != null" class="text-caption text-neutral-400 whitespace-nowrap ml-1" x-text="formatDurationShort(activity.elapsed_seconds)"></span>

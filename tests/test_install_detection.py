@@ -16,7 +16,7 @@ class TestInstallDetection:
     def test_not_app_bundle_in_dev(self):
         """Dev/pip install should not detect as app bundle."""
         assert not is_app_bundle()
-        assert get_cli_prefix() == "omlx"
+        assert get_cli_prefix() == "j-omlx"
 
     def test_app_bundle_detected(self, tmp_path):
         """Simulate running inside .app bundle."""

@@ -9,16 +9,21 @@ import math
 from pathlib import Path
 from typing import Any, Optional
 
+import mlx.core as mx
+
 from ._mflux import (
     MFLUX_INSTALL_HINT,
     BoundedCache,
     apply_load_accel,
+    partition_by,
     run_context,
     safetensors_keys,
+    tiling_context,
 )
 from .base import (
     ImageCapabilities,
     ImageDefaults,
+    ImageGenerationCancelled,
     ImageGenParams,
     ImageModelAdapter,
     MemoryPlan,
@@ -89,6 +94,7 @@ class Krea2Adapter(ImageModelAdapter):
     # mflux semantics: guidance == 1.0 disables CFG (Turbo is distilled, no CFG).
     defaults = ImageDefaults(steps=8, guidance=1.0)
     capabilities = ImageCapabilities(generate=True, edit=False)
+    supports_batching = True
 
     def matches(self, model_dir: Path, model_index: dict) -> bool:
         if super().matches(model_dir, model_index):
@@ -144,6 +150,7 @@ class Krea2Adapter(ImageModelAdapter):
         #
         # Denoise: ~1.0 GB + ~0.27 MB per latent token ((W/16)*(H/16)).
         tokens = (width // 16) * (height // 16)
+        extra_row = int(0.27e6 * tokens * 1.1)
         denoise = int((1.0e9 + 0.27e6 * tokens) * 1.1)
 
         # Qwen-Image VAE decode peak grows with sqrt(pixels): ~15.5 GB per
@@ -154,7 +161,12 @@ class Krea2Adapter(ImageModelAdapter):
 
         pixels = width * height
         plans = [
-            MemoryPlan("full", max(denoise, decode_peak(pixels)), {"tile": None})
+            MemoryPlan(
+                "full",
+                max(denoise, decode_peak(pixels)),
+                {"tile": None},
+                extra_row_bytes=extra_row,
+            )
         ]
         for tile in (512, 256):
             if tile * tile < pixels:
@@ -163,6 +175,7 @@ class Krea2Adapter(ImageModelAdapter):
                         f"vae_tile_{tile}",
                         max(denoise, decode_peak(tile * tile)),
                         {"tile": tile},
+                        extra_row_bytes=extra_row,
                     )
                 )
         return plans
@@ -203,6 +216,133 @@ class Krea2Adapter(ImageModelAdapter):
                 scheduler=params.extra.get("scheduler"),
             )
         return result.image
+
+    def generate_batch(
+        self,
+        model: Any,
+        params_list: list[ImageGenParams],
+        on_step_list: list[StepCallback],
+        plan: Optional[MemoryPlan] = None,
+    ) -> list[Any]:
+        if len(params_list) == 1:
+            return super().generate_batch(model, params_list, on_step_list, plan)
+        from mflux.models.common.config.config import Config
+        from mflux.models.krea2.latent_creator.krea2_latent_creator import (
+            Krea2LatentCreator,
+        )
+        from mflux.models.krea2.model.krea2_sampler import Krea2Sampler
+        from mflux.models.krea2.variants.txt2img.krea2 import Krea2
+        from mflux.utils.image_util import ImageUtil
+
+        encoded = [
+            model._encode_prompts(
+                prompt=params.prompt,
+                negative_prompt=params.negative_prompt,
+                guidance=params.guidance,
+            )
+            for params in params_list
+        ]
+        groups = partition_by(
+            [
+                (
+                    int(embeds.shape[1]),
+                    None if negative is None else int(negative.shape[1]),
+                )
+                for embeds, negative in encoded
+            ]
+        )
+        results: list[Any] = [None] * len(params_list)
+        for indices in groups.values():
+            if len(indices) == 1:
+                index = indices[0]
+                results[index] = self.generate(
+                    model, params_list[index], on_step_list[index], plan
+                )
+                continue
+            first = params_list[indices[0]]
+            resolved = Krea2._resolve_scheduler(first.extra.get("scheduler"))
+            config = Config(
+                model_config=model.model_config,
+                num_inference_steps=first.steps,
+                height=first.height,
+                width=first.width,
+                guidance=first.guidance,
+                scheduler=resolved,
+            )
+            sigmas = config.scheduler.sigmas
+            steppers = {
+                index: Krea2Sampler.make_stepper(
+                    resolved, sigmas, params_list[index].seed
+                )
+                for index in indices
+            }
+            latents = mx.concatenate(
+                [
+                    Krea2LatentCreator.create_noise(
+                        params_list[index].seed, first.height, first.width
+                    )
+                    for index in indices
+                ],
+                axis=0,
+            )
+            embeds = mx.concatenate([encoded[index][0] for index in indices], axis=0)
+            negative = (
+                None
+                if encoded[indices[0]][1] is None
+                else mx.concatenate([encoded[index][1] for index in indices], axis=0)
+            )
+            predict = Krea2._predict(model.transformer, embeds, negative, first.guidance)
+            active = list(indices)
+            with tiling_context(model, plan):
+                for t in range(config.num_inference_steps):
+                    step_sigma = sigmas[t]
+                    velocity = predict(
+                        latents=latents, timestep=step_sigma.reshape(1)
+                    )
+                    denoised = latents - step_sigma * velocity
+                    survivors: list[int] = []
+                    next_latents: list[Any] = []
+                    for position, index in enumerate(active):
+                        try:
+                            on_step_list[index](t + 1, first.steps)
+                        except ImageGenerationCancelled:
+                            continue
+                        next_latents.append(
+                            steppers[index].step(
+                                t,
+                                latents[position : position + 1],
+                                velocity[position : position + 1],
+                                denoised[position : position + 1],
+                            )
+                        )
+                        survivors.append(index)
+                    if not survivors:
+                        return results
+                    latents = mx.concatenate(next_latents, axis=0)
+                    mx.eval(latents)
+                    if len(survivors) != len(active):
+                        active = survivors
+                        embeds = mx.concatenate(
+                            [encoded[index][0] for index in active], axis=0
+                        )
+                        negative = (
+                            None
+                            if encoded[active[0]][1] is None
+                            else mx.concatenate(
+                                [encoded[index][1] for index in active], axis=0
+                            )
+                        )
+                        predict = Krea2._predict(
+                            model.transformer, embeds, negative, first.guidance
+                        )
+                for position, index in enumerate(active):
+                    decoded = model._decode_latents(
+                        latents=latents[position : position + 1],
+                        prompt=params_list[index].prompt,
+                        seed=params_list[index].seed,
+                    )
+                    results[index] = ImageUtil.to_pil(decoded)
+        return results
 
     def release(self, model: Any) -> None:
         cache = getattr(model, "prompt_cache", None)

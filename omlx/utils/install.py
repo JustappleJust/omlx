@@ -8,6 +8,9 @@ from pathlib import Path
 
 _APP_BUNDLE_CLI_NAME = "omlx-cli"
 _PATH_CLI = "omlx"
+# This fork installs its console script as j-omlx so it never shadows the
+# official Homebrew / oMLX.app command.
+_PIP_CLI = "j-omlx"
 _USER_CLI_SHIM = Path(".omlx") / "bin" / "omlx"
 
 
@@ -81,7 +84,7 @@ def get_cli_prefix() -> str:
         if _path_resolves_to_app_managed_cli():
             return _PATH_CLI
         return str(get_app_bundle_cli_path())
-    return _PATH_CLI
+    return _PIP_CLI
 
 
 def get_cli_command_prefix() -> str:

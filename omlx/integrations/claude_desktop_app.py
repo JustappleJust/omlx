@@ -6,7 +6,7 @@ Shares the oMLX gateway configuration used by the admin routes
 Claude Desktop GUI.
 
 Usage:
-    omlx launch claude_desktop
+    j-omlx launch claude_desktop
 
 Which configures the gateway profile and then opens the app with
 ``open -a Claude``. The gateway profile only takes effect after the

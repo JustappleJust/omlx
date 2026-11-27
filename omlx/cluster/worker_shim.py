@@ -88,7 +88,7 @@ def ensure_cluster_python_shim(
     Returns the shim path on success, ``None`` when it could not be written.
 
     ``keep_foreign`` leaves an existing shim alone while the interpreter it
-    points at still exists, so a side-by-side install (the ``my-omlx`` fork)
+    points at still exists, so a side-by-side install (the ``j-omlx`` fork)
     does not take the cluster runtime over from the official app.
     """
 

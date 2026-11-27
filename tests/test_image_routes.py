@@ -7,12 +7,14 @@ from contextlib import asynccontextmanager
 
 import pytest
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from PIL import Image
 
 import omlx.api.image_routes as routes
 from omlx.api.image_models import parse_size
 from omlx.engine.image_gen import ImageGenEngine
+from omlx.exceptions import SchedulerQueueFullError
 from tests.test_image_engine import FakeAdapter
 
 
@@ -53,6 +55,15 @@ def client(monkeypatch):
     monkeypatch.setattr(routes, "_server_state", lambda: _State())
     app = FastAPI()
     app.include_router(routes.router)
+
+    @app.exception_handler(SchedulerQueueFullError)
+    async def _queue_full(request, exc):
+        return JSONResponse(
+            status_code=503,
+            content={"error": {"message": str(exc)}},
+            headers={"Retry-After": "1"},
+        )
+
     return TestClient(app), engine
 
 
@@ -165,3 +176,15 @@ def test_edit_rejects_decompression_bomb(client, monkeypatch):
     b64 = base64.b64encode(_png((100, 100))).decode()
     r = c.post("/v1/images/edits", json={"model": "editor", "prompt": "x", "images": [b64]})
     assert r.status_code == 400 and "pixel limit" in r.text
+
+
+def test_queue_full_maps_to_503(client, monkeypatch):
+    c, engine = client
+
+    async def full(*args, **kwargs):
+        raise SchedulerQueueFullError(2, 2)
+
+    monkeypatch.setattr(engine, "generate", full)
+    r = c.post("/v1/images/generations", json={"model": "fake", "prompt": "x"})
+    assert r.status_code == 503
+    assert r.headers["retry-after"] == "1"

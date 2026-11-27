@@ -17,8 +17,8 @@ from typing import Any, Optional
 
 from ._mflux import (
     MFLUX_INSTALL_HINT,
-    apply_load_accel,
     BoundedCache,
+    apply_load_accel,
     image_digest,
     is_prequantized_dir,
     read_json,
@@ -146,7 +146,9 @@ class QwenImage21Adapter(ImageModelAdapter):
     ) -> Any:
         try:
             from mflux.models.common.config.model_config import ModelConfig
-            from mflux.models.qwen21.variants.edit.qwen_image_21_edit import QwenImage21Edit
+            from mflux.models.qwen21.variants.edit.qwen_image_21_edit import (
+                QwenImage21Edit,
+            )
         except ImportError as exc:  # pragma: no cover - depends on extra
             raise ImportError(MFLUX_INSTALL_HINT) from exc
 
@@ -156,27 +158,46 @@ class QwenImage21Adapter(ImageModelAdapter):
             else ModelConfig.qwen_image_21()
         )
         model = QwenImage21Edit(quantize=quantize, model_path=str(model_dir), model_config=config)
+        text_width = int(
+            model._component_configs["text_encoder"]["text_config"]["hidden_size"]
+        )
+        context_width = int(model._component_configs["transformer"]["context_in_dim"])
+        if text_width != context_width:
+            raise ValueError(
+                f"{self.name}: text encoder width {text_width} does not match the "
+                f"transformer's context_in_dim {context_width} ({model_dir})"
+            )
         model.prompt_cache = BoundedCache(maxsize=16, max_bytes=512 << 20)
-        self._install_caches(model)
+        self._install_caches(model, model_dir)
         apply_load_accel(model, options)
         return model
 
-    def _install_caches(self, model: Any) -> None:
+    def _install_caches(self, model: Any, model_dir: Path) -> None:
         # Reference-conditioned prompt encodings (mflux only caches text-only).
         model._omlx_cond_prompt_cache = BoundedCache(maxsize=8, max_bytes=1 << 30)
         model._omlx_vae_cache = BoundedCache(maxsize=16, max_bytes=1 << 30)
         original_encode_prompt = model._encode_prompt
 
+        def checked(encoded, source: str):
+            width = int(encoded[0].shape[-1])
+            expected = int(model.transformer.txt_in.text_norm.weight.shape[-1])
+            if width != expected:
+                raise ValueError(
+                    f"{self.name}: prompt embedding width {width} does not match the "
+                    f"transformer's {expected} ({model_dir}, {source})"
+                )
+            return encoded
+
         def encode_prompt(prompt, images):
             if not images:
-                return original_encode_prompt(prompt, images)
+                return checked(original_encode_prompt(prompt, images), "text-only")
             key = (prompt, tuple(image_digest(i) for i in images))
             cache = model._omlx_cond_prompt_cache
             if key in cache:
-                return cache[key]
+                return checked(cache[key], "reference cache hit")
             out = original_encode_prompt(prompt, images)
             cache[key] = out
-            return out
+            return checked(out, "reference encode")
 
         model._encode_prompt = encode_prompt
         model.vae.encode = _CachedVAEEncode(model.vae.encode, model._omlx_vae_cache)

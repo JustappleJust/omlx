@@ -219,11 +219,11 @@ end-to-end measurements so a poor cut, cache miss, or slow link is visible.
 ## Diagnostics
 
 ```bash
-omlx cluster status --json
-omlx cluster status --route-to 169.254.42.2
-omlx cluster worker-smoke
-omlx cluster collective-smoke
-omlx cluster pipeline-smoke
+j-omlx cluster status --json
+j-omlx cluster status --route-to 169.254.42.2
+j-omlx cluster worker-smoke
+j-omlx cluster collective-smoke
+j-omlx cluster pipeline-smoke
 ```
 
 `collective-smoke` is a two-rank loopback all-sum. `pipeline-smoke` executes a
@@ -233,7 +233,7 @@ produce the same result. Neither proves the physical Thunderbolt path.
 Plan a model before activating it:
 
 ```bash
-omlx cluster plan \
+j-omlx cluster plan \
   --model /absolute/path/to/model \
   --node studio=256GiB \
   --node mobile=128GiB \

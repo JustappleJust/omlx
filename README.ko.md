@@ -64,11 +64,11 @@ brew install jundot/omlx/omlx --with-custom-kernel   # 네이티브 커스텀 �
 brew update && brew upgrade omlx
 
 # 백그라운드 서비스로 실행 (크래시 시 자동 재시작)
-omlx start
+j-omlx start
 
 # 선택사항: MCP (Model Context Protocol) 지원, 설치 후 재시작해야 적용
 /opt/homebrew/opt/omlx/libexec/bin/pip install mcp
-omlx restart
+j-omlx restart
 ```
 
 ### 소스에서 설치
@@ -78,7 +78,7 @@ git clone https://github.com/jundot/omlx.git
 cd omlx
 make install                # 웹 UI와 네이티브 커스텀 커널까지 editable 설치
 # 전체 Xcode가 없다면 make install-no-kernels 로 커널 없이 설치
-make mcp                    # 선택: MCP 지원 추가, `omlx serve` 재시작 후 적용
+make mcp                    # 선택: MCP 지원 추가, `j-omlx serve` 재시작 후 적용
 ```
 
 macOS 15.0+ (Sequoia), Python 3.11–3.13, Apple Silicon (M1/M2/M3/M4/M5)이 필요합니다.
@@ -115,12 +115,12 @@ Applications 폴더에서 oMLX를 실행하세요. 환영 화면에서 세 단�
 
 ```bash
 # 관리형 백그라운드 서버 (macOS 앱 또는 Homebrew 설치)
-omlx start
-omlx stop
-omlx restart
+j-omlx start
+j-omlx stop
+j-omlx restart
 
 # 현재 터미널에 붙는 foreground 서버
-omlx serve --model-dir ~/models
+j-omlx serve --model-dir ~/models
 ```
 
 서버가 하위 디렉토리에서 LLM, VLM, 임베딩 모델, 리랭커를 자동으로 탐색합니다. OpenAI 호환 클라이언트에서 `http://localhost:8000/v1`로 연결할 수 있습니다. 내장 채팅 UI도 `http://localhost:8000/admin/chat`에서 사용 가능합니다.
@@ -130,9 +130,9 @@ omlx serve --model-dir ~/models
 Homebrew로 설치한 경우 oMLX를 관리형 백그라운드 서비스로 실행할 수 있습니다:
 
 ```bash
-omlx start                    # brew services를 통해 시작
-omlx stop                     # 중지
-omlx restart                  # 재시작
+j-omlx start                    # brew services를 통해 시작
+j-omlx stop                     # 중지
+j-omlx restart                  # 재시작
 
 brew services start omlx    # 시작 (크래시 시 자동 재시작)
 brew services stop omlx     # 중지
@@ -140,7 +140,7 @@ brew services restart omlx  # 재시작
 brew services info omlx     # 상태 확인
 ```
 
-서비스는 기본 설정으로 `omlx serve`를 실행합니다 (`~/.omlx/models`, 포트 8000). `omlx start`, `omlx stop`, `omlx restart`는 공통 lifecycle 명령이며, Homebrew 설치에서는 `brew services`로 위임됩니다. 커스터마이즈하려면 `omlx serve --model-dir /your/path`를 한 번 실행하여 `~/.omlx/settings.json`에 설정을 저장하세요.
+서비스는 기본 설정으로 `j-omlx serve`를 실행합니다 (`~/.omlx/models`, 포트 8000). `j-omlx start`, `j-omlx stop`, `j-omlx restart`는 공통 lifecycle 명령이며, Homebrew 설치에서는 `brew services`로 위임됩니다. 커스터마이즈하려면 `j-omlx serve --model-dir /your/path`를 한 번 실행하여 `~/.omlx/settings.json`에 설정을 저장하세요.
 
 로그는 두 곳에 기록됩니다:
 - **서비스 로그**: `$(brew --prefix)/var/log/omlx.log` (stdout/stderr)
@@ -319,40 +319,40 @@ mlx-lm에서 사용 가능한 모든 함수 호출 형식, JSON 스키마 검증
 
 ```bash
 # 관리형 백그라운드 서버 (macOS 앱 또는 Homebrew 설치)
-omlx start
-omlx stop
-omlx restart
+j-omlx start
+j-omlx stop
+j-omlx restart
 
 # 기본 설정으로 시작 (메모리 가드 티어 = balanced, 관리자 UI에서 관리)
-omlx serve --model-dir ~/models
+j-omlx serve --model-dir ~/models
 
 # 시작 시 메모리 가드 티어 선택
-omlx serve --model-dir ~/models --memory-guard safe
+j-omlx serve --model-dir ~/models --memory-guard safe
 
 # 메모리 가드 상한을 GB 단위로 직접 지정
-omlx serve --model-dir ~/models --memory-guard-gb 48
+j-omlx serve --model-dir ~/models --memory-guard-gb 48
 
 # KV 블록용 SSD 캐시 활성화
-omlx serve --model-dir ~/models --paged-ssd-cache-dir ~/.omlx/cache
+j-omlx serve --model-dir ~/models --paged-ssd-cache-dir ~/.omlx/cache
 
 # 메모리 내 Hot 캐시 크기 설정
-omlx serve --model-dir ~/models --hot-cache-max-size 20%
+j-omlx serve --model-dir ~/models --hot-cache-max-size 20%
 
 # 최대 동시 요청 수 조정 (기본값: 8)
-omlx serve --model-dir ~/models --max-concurrent-requests 16
+j-omlx serve --model-dir ~/models --max-concurrent-requests 16
 
 # MCP 도구 사용
-omlx serve --model-dir ~/models --mcp-config mcp.json
+j-omlx serve --model-dir ~/models --mcp-config mcp.json
 
 # HuggingFace 미러 엔드포인트 (접속이 제한된 지역용)
-omlx serve --model-dir ~/models --hf-endpoint https://hf-mirror.com
+j-omlx serve --model-dir ~/models --hf-endpoint https://hf-mirror.com
 
 # API 키 인증
-omlx serve --model-dir ~/models --api-key your-secret-key
+j-omlx serve --model-dir ~/models --api-key your-secret-key
 # Localhost 전용: 관리자 패널 전체 설정에서 검증 건너뛰기
 
 # 웹 UI 없이 추론·관리자 API만 실행 (설정에 저장되지 않음)
-omlx serve --model-dir ~/models --headless
+j-omlx serve --model-dir ~/models --headless
 ```
 
 모든 설정은 `/admin`의 웹 관리자 패널에서도 설정할 수 있습니다. 설정은 `~/.omlx/settings.json`에 저장되며, CLI 플래그가 우선합니다.

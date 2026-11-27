@@ -106,26 +106,43 @@ class StepReporter:
         self._on_step(self._i, self._total)
 
 
+def partition_by(keys: list[Any]) -> dict[Any, list[int]]:
+    """Group row indices by a per-row key, preserving input order."""
+    groups: dict[Any, list[int]] = {}
+    for index, key in enumerate(keys):
+        groups.setdefault(key, []).append(index)
+    return groups
+
+
 @contextlib.contextmanager
-def run_context(model: Any, on_step: StepCallback, steps: int, plan: Optional[MemoryPlan]) -> Iterator[None]:
-    """Attach the progress callback and the plan's VAE tiling for one run."""
+def tiling_context(model: Any, plan: Optional[MemoryPlan]) -> Iterator[None]:
+    """Install the plan's VAE tiling without subscribing to model callbacks."""
     from mflux.models.common.vae.tiling_config import TilingConfig
 
     tile = (plan.options.get("tile") if plan else None) or None
-    reporter = StepReporter(on_step, steps)
-    registry = model.callbacks
-    registry.in_loop.append(reporter)
     previous_tiling = getattr(model, "tiling_config", None)
     # Overlap stays at mflux's default (8 latent px = 64 image px).
     model.tiling_config = TilingConfig(vae_decode_tile_size=tile) if tile else None
     try:
         yield
     finally:
+        model.tiling_config = previous_tiling
+
+
+@contextlib.contextmanager
+def run_context(model: Any, on_step: StepCallback, steps: int, plan: Optional[MemoryPlan]) -> Iterator[None]:
+    """Attach the progress callback and the plan's VAE tiling for one run."""
+    reporter = StepReporter(on_step, steps)
+    registry = model.callbacks
+    registry.in_loop.append(reporter)
+    try:
+        with tiling_context(model, plan):
+            yield
+    finally:
         try:
             registry.in_loop.remove(reporter)
         except ValueError:
             pass
-        model.tiling_config = previous_tiling
 
 
 def safetensors_keys(path: Path) -> list[str]:

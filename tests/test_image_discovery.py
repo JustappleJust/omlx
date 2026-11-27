@@ -260,3 +260,57 @@ def test_all_three_models_discovered(tmp_path):
         "flux-3-image-klein": "image",
         "Qwen-Image-2.1-Turbo": "image",
     }
+
+
+def test_memory_plan_scales_with_batch_rows():
+    plans = Krea2Adapter().memory_plans(1024, 1024)
+    assert plans[0].peak_for(1) == plans[0].peak_bytes
+    assert plans[0].extra_row_bytes > 0
+    assert plans[0].peak_for(3) - plans[0].peak_for(2) == plans[0].extra_row_bytes
+
+
+def test_only_krea2_and_flux3_support_batching():
+    from omlx.image_gen.base import ImageModelAdapter
+    from omlx.image_gen.flux3 import Flux3KleinAdapter
+    from omlx.image_gen.qwen21 import QwenImage21Adapter
+
+    assert Krea2Adapter.supports_batching is True
+    assert Flux3KleinAdapter.supports_batching is True
+    assert QwenImage21Adapter.supports_batching is False
+    assert ImageModelAdapter.supports_batching is False
+
+
+def test_default_generate_batch_runs_each_row_in_order():
+    from omlx.image_gen.base import (
+        ImageDefaults,
+        ImageGenParams,
+        ImageModelAdapter,
+        MemoryPlan,
+    )
+
+    class Recorder(ImageModelAdapter):
+        name = "recorder"
+        defaults = ImageDefaults(steps=1, guidance=1.0)
+
+        def component_files(self, model_dir):
+            return {}
+
+        def memory_plans(self, width, height, n_refs=0):
+            return [MemoryPlan("full", 1)]
+
+        def load(self, model_dir, quantize, options=None):
+            return object()
+
+        def generate(self, model, params, on_step, plan=None):
+            self.seen.append(params.prompt)
+            return params.prompt
+
+    recorder = Recorder()
+    recorder.seen = []
+    rows = [
+        ImageGenParams(prompt="a", width=512, height=512, steps=1, guidance=1.0, seed=1),
+        ImageGenParams(prompt="b", width=512, height=512, steps=1, guidance=1.0, seed=2),
+    ]
+    out = recorder.generate_batch(object(), rows, [lambda *_: None, lambda *_: None])
+    assert out == ["a", "b"]
+    assert recorder.seen == ["a", "b"]

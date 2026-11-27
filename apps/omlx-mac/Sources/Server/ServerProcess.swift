@@ -1,4 +1,4 @@
-// Lifecycle owner for the `omlx serve` child process.
+// Lifecycle owner for the `j-omlx serve` child process.
 //
 // State machine
 //   stopped ─start()→ starting ─/health 200→ running ─/health fail×3→ unresponsive

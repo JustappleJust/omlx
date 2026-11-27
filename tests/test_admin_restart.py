@@ -2,7 +2,7 @@
 """Tests for the admin server-restart route.
 
 Covers the supervisor-gating contract: the endpoint refuses with 503 when
-``OMLX_SUPERVISED`` is not set in the environment (plain ``omlx serve``)
+``OMLX_SUPERVISED`` is not set in the environment (plain ``j-omlx serve``)
 and accepts with 202 + schedules a SIGTERM when running under the menu
 bar supervisor.
 """
@@ -79,7 +79,7 @@ class TestRestartServerRoute:
 
     def test_unsupervised_does_not_schedule_termination(self, client, monkeypatch):
         """503 path must not schedule a SIGTERM — otherwise plain
-        ``omlx serve`` instances would die with no respawn after a
+        ``j-omlx serve`` instances would die with no respawn after a
         single accidental click against an unsupervised server."""
         monkeypatch.delenv("OMLX_SUPERVISED", raising=False)
 

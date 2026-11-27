@@ -19,6 +19,9 @@ from .registry import (
     is_image_model_dir,
     mflux_available,
 )
+from ..patches.mlx_gelu_approx import apply_gelu_approx_patch
+
+apply_gelu_approx_patch()
 
 #: Default load-time quantization (bits) for image models; None = bf16.
 DEFAULT_IMAGE_QUANTIZE = 8

@@ -4781,8 +4781,8 @@
             },
 
             _launchCmd(tool) {
-                const raw = this.stats.cli_prefix || 'omlx';
-                const cli = raw === 'omlx' ? raw : this.shellQuote(raw);
+                const raw = this.stats.cli_prefix || 'j-omlx';
+                const cli = raw === 'j-omlx' ? raw : this.shellQuote(raw);
                 return `${cli} launch ${tool}`;
             },
 

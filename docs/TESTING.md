@@ -1,6 +1,6 @@
 # Test layout
 
-Server tests live in `tests/` and must not depend on `apps/`: after the full run, CI deletes `apps/`, collects the server tests again, and starts `omlx serve` to check the API-only fallback. Web UI tests live in `apps/omlx-web/tests/` and the macOS app's Python tests in `apps/omlx-mac/Tests/python/`. A plain `pytest` runs all three through `testpaths`.
+Server tests live in `tests/` and must not depend on `apps/`: after the full run, CI deletes `apps/`, collects the server tests again, and starts `j-omlx serve` to check the API-only fallback. Web UI tests live in `apps/omlx-web/tests/` and the macOS app's Python tests in `apps/omlx-mac/Tests/python/`. A plain `pytest` runs all three through `testpaths`.
 
 Run `node --test` from `apps/omlx-web/tests/` to discover the standalone dashboard script tests. `test_admin_network_auth_ui.py` runs `network_auth_ui_runner.cjs` with backend-generated cases on stdin.
 

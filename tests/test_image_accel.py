@@ -106,3 +106,34 @@ def test_image_digest_is_content_based():
     b = Image.new("RGB", (8, 8), (1, 2, 3))
     c = Image.new("RGB", (8, 8), (1, 2, 4))
     assert image_digest(a) == image_digest(b) != image_digest(c)
+
+
+def test_gelu_approx_keeps_each_width_after_a_compiled_trace():
+    from omlx.patches.mlx_gelu_approx import apply_gelu_approx_patch
+
+    assert apply_gelu_approx_patch() is False
+
+    def fixed_width():
+        return nn.gelu_approx(mx.ones((1, 1, 6144), dtype=mx.bfloat16))
+
+    mx.eval(mx.compile(fixed_width)())
+    out = nn.gelu_approx(mx.ones((1, 10, 4096), dtype=mx.bfloat16))
+    assert out.shape == (1, 10, 4096)
+    value = nn.gelu_approx(mx.array([1.0], dtype=mx.float32))
+    assert float(value[0]) == pytest.approx(0.84119, abs=1e-5)
+
+
+def test_tiling_context_does_not_subscribe_callbacks():
+    from omlx.image_gen._mflux import tiling_context
+    from omlx.image_gen.base import MemoryPlan
+
+    class Model:
+        def __init__(self):
+            self.callbacks = type("Callbacks", (), {"in_loop": []})()
+            self.tiling_config = "before"
+
+    model = Model()
+    with tiling_context(model, MemoryPlan("tiled", 1, {"tile": 256})):
+        assert model.tiling_config is not None
+        assert model.callbacks.in_loop == []
+    assert model.tiling_config == "before"

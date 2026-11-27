@@ -65,11 +65,11 @@ brew install jundot/omlx/omlx --with-custom-kernel   # Con i kernel personalizza
 brew update && brew upgrade omlx
 
 # Esegui come servizio in background (si riavvia automaticamente in caso di crash)
-omlx start
+j-omlx start
 
 # Facoltativo: supporto MCP (Model Context Protocol), poi riavvia per caricarlo
 /opt/homebrew/opt/omlx/libexec/bin/pip install mcp
-omlx restart
+j-omlx restart
 ```
 
 ### Dai sorgenti
@@ -79,7 +79,7 @@ git clone https://github.com/jundot/omlx.git
 cd omlx
 make install                # Installazione in modalità editable con l'interfaccia web e i kernel personalizzati nativi
 # Senza Xcode completo? make install-no-kernels installa senza i kernel
-make mcp                    # Facoltativo: supporto MCP, riavvia `omlx serve` per caricarlo
+make mcp                    # Facoltativo: supporto MCP, riavvia `j-omlx serve` per caricarlo
 ```
 
 Richiede macOS 15.0+ (Sequoia), Python 3.11–3.13 e Apple Silicon (M1/M2/M3/M4/M5).
@@ -116,12 +116,12 @@ Avvia oMLX dalla cartella Applicazioni. La schermata di benvenuto ti guida in tr
 
 ```bash
 # Server gestito in background (app macOS o installazione Homebrew)
-omlx start
-omlx stop
-omlx restart
+j-omlx start
+j-omlx stop
+j-omlx restart
 
 # Server in primo piano, collegato a questo terminale
-omlx serve --model-dir ~/models
+j-omlx serve --model-dir ~/models
 ```
 
 Il server rileva automaticamente LLM, VLM, modelli di embedding e reranker nelle sottodirectory. Qualsiasi client compatibile con OpenAI può connettersi a `http://localhost:8000/v1`. È disponibile anche un'interfaccia di chat integrata all'indirizzo `http://localhost:8000/admin/chat`.
@@ -131,9 +131,9 @@ Il server rileva automaticamente LLM, VLM, modelli di embedding e reranker nelle
 Se hai installato oMLX con Homebrew, puoi eseguirlo come servizio gestito in background:
 
 ```bash
-omlx start                    # Avvia tramite brew services
-omlx stop                     # Arresta
-omlx restart                  # Riavvia
+j-omlx start                    # Avvia tramite brew services
+j-omlx stop                     # Arresta
+j-omlx restart                  # Riavvia
 
 brew services start omlx    # Avvia (si riavvia automaticamente in caso di crash)
 brew services stop omlx     # Arresta
@@ -141,7 +141,7 @@ brew services restart omlx  # Riavvia
 brew services info omlx     # Controlla lo stato
 ```
 
-Il servizio esegue `omlx serve` con valori predefiniti che non richiedono alcuna configurazione (`~/.omlx/models`, porta 8000). `omlx start`, `omlx stop` e `omlx restart` sono i comandi portabili per il ciclo di vita del server; nelle installazioni Homebrew vengono delegati a `brew services`. Per personalizzare la configurazione, esegui una volta `omlx serve --model-dir /your/path` per salvare le impostazioni in `~/.omlx/settings.json`.
+Il servizio esegue `j-omlx serve` con valori predefiniti che non richiedono alcuna configurazione (`~/.omlx/models`, porta 8000). `j-omlx start`, `j-omlx stop` e `j-omlx restart` sono i comandi portabili per il ciclo di vita del server; nelle installazioni Homebrew vengono delegati a `brew services`. Per personalizzare la configurazione, esegui una volta `j-omlx serve --model-dir /your/path` per salvare le impostazioni in `~/.omlx/settings.json`.
 
 I log vengono scritti in due posizioni:
 - **Log del servizio**: `$(brew --prefix)/var/log/omlx.log` (stdout/stderr)
@@ -257,11 +257,11 @@ Configura OpenClaw, OpenCode, Codex, Hermes Agent, Copilot, Pi, Mistral Vibe e D
   <img src="docs/images/omlx_integrations.png" alt="Integrazioni di oMLX" width="720">
 </p>
 
-`omlx launch codex` e `omlx launch codex_app` forniscono a Codex un catalogo di tutti i modelli di chat del server, così puoi cambiare modello con `/model` o con il selettore dei modelli dell'app. Il modello iniziale è scelto da `--model`, dal modello Codex salvato o dal modello predefinito del server. Serve Codex 0.148 o successivo; riavvialo dopo aver aggiunto o rimosso modelli.
+`j-omlx launch codex` e `j-omlx launch codex_app` forniscono a Codex un catalogo di tutti i modelli di chat del server, così puoi cambiare modello con `/model` o con il selettore dei modelli dell'app. Il modello iniziale è scelto da `--model`, dal modello Codex salvato o dal modello predefinito del server. Serve Codex 0.148 o successivo; riavvialo dopo aver aggiunto o rimosso modelli.
 
-`omlx launch copilot` fornisce a Copilot CLI un catalogo di tutti i modelli di chat del server, così puoi cambiare modello con `/model`. Il modello iniziale è scelto da `--model`, dal modello Copilot salvato o dal modello predefinito del server. Il catalogo viene scritto nel file `providers.json` di Copilot accanto agli altri provider, e il file resta con permessi `0600` perché contiene la chiave API del server. Serve Copilot CLI 1.0.83 o successivo; riavvialo dopo aver aggiunto o rimosso modelli.
+`j-omlx launch copilot` fornisce a Copilot CLI un catalogo di tutti i modelli di chat del server, così puoi cambiare modello con `/model`. Il modello iniziale è scelto da `--model`, dal modello Copilot salvato o dal modello predefinito del server. Il catalogo viene scritto nel file `providers.json` di Copilot accanto agli altri provider, e il file resta con permessi `0600` perché contiene la chiave API del server. Serve Copilot CLI 1.0.83 o successivo; riavvialo dopo aver aggiunto o rimosso modelli.
 
-Installa [Mistral Vibe](https://github.com/mistralai/mistral-vibe) 2.26.0 o successivo con `uv tool install mistral-vibe`, poi esegui `omlx launch vibe` per scegliere un modello locale, oppure `omlx launch vibe --model <model-id>`. Provider, modello, riferimento alla chiave API e finestra di contesto di Vibe vengono configurati per quel processo tramite le variabili d'ambiente `VIBE_*`, che ne sovrascrivono la configurazione. Il file `config.toml` esistente, `VIBE_HOME`, i permessi dei tool e la configurazione cloud restano invariati. Gli argomenti per Vibe vanno passati dopo `--`, ad esempio `omlx launch vibe --model <model-id> -- --resume`.
+Installa [Mistral Vibe](https://github.com/mistralai/mistral-vibe) 2.26.0 o successivo con `uv tool install mistral-vibe`, poi esegui `j-omlx launch vibe` per scegliere un modello locale, oppure `j-omlx launch vibe --model <model-id>`. Provider, modello, riferimento alla chiave API e finestra di contesto di Vibe vengono configurati per quel processo tramite le variabili d'ambiente `VIBE_*`, che ne sovrascrivono la configurazione. Il file `config.toml` esistente, `VIBE_HOME`, i permessi dei tool e la configurazione cloud restano invariati. Gli argomenti per Vibe vanno passati dopo `--`, ad esempio `j-omlx launch vibe --model <model-id> -- --resume`.
 
 ### Benchmark delle prestazioni
 
@@ -345,43 +345,43 @@ Il tipo di ogni modello viene rilevato automaticamente. Puoi anche scaricare i m
 
 ```bash
 # Server gestito in background (app macOS o installazione Homebrew)
-omlx start
-omlx stop
-omlx restart
+j-omlx start
+j-omlx stop
+j-omlx restart
 
 # Avvia con le impostazioni predefinite (livello di protezione della memoria = balanced, gestibile dall'interfaccia di amministrazione)
-omlx serve --model-dir ~/models
+j-omlx serve --model-dir ~/models
 
 # Scegli un livello di protezione della memoria all'avvio
-omlx serve --model-dir ~/models --memory-guard safe
+j-omlx serve --model-dir ~/models --memory-guard safe
 
 # Imposta un tetto personalizzato in GB per la protezione della memoria
-omlx serve --model-dir ~/models --memory-guard-gb 48
+j-omlx serve --model-dir ~/models --memory-guard-gb 48
 
 # Attiva la cache SSD per i blocchi KV
-omlx serve --model-dir ~/models --paged-ssd-cache-dir ~/.omlx/cache
+j-omlx serve --model-dir ~/models --paged-ssd-cache-dir ~/.omlx/cache
 
 # Imposta la dimensione della cache hot in memoria
-omlx serve --model-dir ~/models --hot-cache-max-size 20%
+j-omlx serve --model-dir ~/models --hot-cache-max-size 20%
 
 # Regola il numero massimo di richieste simultanee (predefinito: 8)
-omlx serve --model-dir ~/models --max-concurrent-requests 16
+j-omlx serve --model-dir ~/models --max-concurrent-requests 16
 
 # Con i tool MCP
-omlx serve --model-dir ~/models --mcp-config mcp.json
+j-omlx serve --model-dir ~/models --mcp-config mcp.json
 
 # Endpoint mirror di HuggingFace (per le regioni con accesso limitato)
-omlx serve --model-dir ~/models --hf-endpoint https://hf-mirror.com
+j-omlx serve --model-dir ~/models --hf-endpoint https://hf-mirror.com
 
 # Autenticazione con chiave API
-omlx serve --model-dir ~/models --api-key your-secret-key
+j-omlx serve --model-dir ~/models --api-key your-secret-key
 # Solo localhost: la verifica si può saltare dalle impostazioni globali del pannello di amministrazione
 
 # L'accesso dalla rete richiede l'autenticazione
-omlx serve --model-dir ~/models --host 0.0.0.0 --api-key your-secret-key
+j-omlx serve --model-dir ~/models --host 0.0.0.0 --api-key your-secret-key
 
 # Solo API di inferenza e di amministrazione, senza l'interfaccia web (non viene salvato nelle impostazioni)
-omlx serve --model-dir ~/models --headless
+j-omlx serve --model-dir ~/models --headless
 ```
 
 Il limite predefinito della cache SSD, `auto`, usa il 50% della somma tra lo spazio libero su disco e i file della cache SSD già esistenti, sidecar GDN compresi. Il budget viene ricalcolato durante l'uso e non si riduce per il solo fatto che la cache cresce o che il server viene riavviato. Può invece cambiare se varia lo spazio occupato da altri dati sul disco. Per un limite fisso, imposta `--paged-ssd-cache-max-size 20GB`.

@@ -20,7 +20,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import ValidationError
 
-from ..exceptions import OutOfMemoryError
+from ..exceptions import OutOfMemoryError, SchedulerQueueFullError
 from ..server_metrics import get_server_metrics
 from .image_io import MAX_EDIT_IMAGES, decode_base64_image, decode_image, read_upload
 from .image_models import (
@@ -189,7 +189,10 @@ async def _run(
             raise
         except OutOfMemoryError as e:
             raise HTTPException(status_code=507, detail=str(e)) from e
+        except SchedulerQueueFullError:
+            raise
         except ValueError as e:
+            logger.exception("Image generation failed (model=%s)", model_id)
             raise HTTPException(status_code=400, detail=str(e)) from e
         except HTTPException:
             raise

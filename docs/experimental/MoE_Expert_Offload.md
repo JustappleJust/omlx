@@ -209,7 +209,7 @@ prose prompt in one prefill chunk followed by 64 greedy tokens. Single runs:
 | 25% | 96 | 4.5 s | 65.7 GiB | 77.4 GiB | 25 tok/s | 4.2 tok/s | 0.78 |
 
 Both settings produce coherent, on-topic continuations. Served through
-`omlx serve` with the same settings (discovered from the HF cache, Engram
+`j-omlx serve` with the same settings (discovered from the HF cache, Engram
 forced to SSD by admission, 12.5% residency, engine load 4.4 s), two
 64-token chat completions ran at 2.7 tok/s on cold expert slots and
 4.1 tok/s after. Prefill reads every
@@ -322,7 +322,7 @@ runs at each residency; between residencies the two texts forked at one
 marginal token (a capitalization), which is the documented behavior of
 over-capacity prefill under a different chunking.
 
-`omlx serve` end to end on the same machine (balanced memory guard, which
+`j-omlx serve` end to end on the same machine (balanced memory guard, which
 puts the dynamic ceiling at 102.5 GB): the checkpoint is discovered from the
 HF cache; at 20% the request is refused with 507 because the 105.0 GB
 estimate does not fit that ceiling (the aggressive tier, or raising

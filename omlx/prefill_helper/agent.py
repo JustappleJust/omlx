@@ -167,7 +167,7 @@ def resolve_target(node_id: str) -> AgentTarget:
     if no_route:
         raise UnreachableError(
             f"{name} does not answer: macOS has no route to it. If it is on, allow "
-            "local network access for oMLX (or the terminal that runs omlx serve) "
+            "local network access for oMLX (or the terminal that runs j-omlx serve) "
             "in System Settings > Privacy & Security > Local Network."
         )
     raise UnreachableError(f"{name} does not answer.")

@@ -64,11 +64,11 @@ brew install jundot/omlx/omlx --with-custom-kernel   # With native custom kernel
 brew update && brew upgrade omlx
 
 # Run as a background service (auto-restarts on crash)
-omlx start
+j-omlx start
 
 # Optional: MCP (Model Context Protocol) support, then restart to load it
 /opt/homebrew/opt/omlx/libexec/bin/pip install mcp
-omlx restart
+j-omlx restart
 ```
 
 ### From Source
@@ -78,7 +78,7 @@ git clone https://github.com/jundot/omlx.git
 cd omlx
 make install                # Editable install with the web UI and native custom kernels
 # No full Xcode? make install-no-kernels installs without the kernels
-make mcp                    # Optional: MCP support, restart `omlx serve` to load it
+make mcp                    # Optional: MCP support, restart `j-omlx serve` to load it
 ```
 
 Requires macOS 15.0+ (Sequoia), Python 3.11–3.13, and Apple Silicon (M1/M2/M3/M4/M5).
@@ -115,12 +115,12 @@ Launch oMLX from your Applications folder. The Welcome screen guides you through
 
 ```bash
 # Managed background server (macOS app or Homebrew install)
-omlx start
-omlx stop
-omlx restart
+j-omlx start
+j-omlx stop
+j-omlx restart
 
 # Foreground server attached to this terminal
-omlx serve --model-dir ~/models
+j-omlx serve --model-dir ~/models
 ```
 
 The server discovers LLMs, VLMs, embedding models, and rerankers from subdirectories automatically. Any OpenAI-compatible client can connect to `http://localhost:8000/v1`. A built-in chat UI is also available at `http://localhost:8000/admin/chat`.
@@ -130,9 +130,9 @@ The server discovers LLMs, VLMs, embedding models, and rerankers from subdirecto
 If you installed via Homebrew, you can run oMLX as a managed background service:
 
 ```bash
-omlx start                    # Start via brew services
-omlx stop                     # Stop
-omlx restart                  # Restart
+j-omlx start                    # Start via brew services
+j-omlx stop                     # Stop
+j-omlx restart                  # Restart
 
 brew services start omlx    # Start (auto-restarts on crash)
 brew services stop omlx     # Stop
@@ -140,7 +140,7 @@ brew services restart omlx  # Restart
 brew services info omlx     # Check status
 ```
 
-The service runs `omlx serve` with zero-config defaults (`~/.omlx/models`, port 8000). `omlx start`, `omlx stop`, and `omlx restart` are the portable lifecycle commands; Homebrew installs delegate them to `brew services`. To customize, run `omlx serve --model-dir /your/path` once to persist settings to `~/.omlx/settings.json`.
+The service runs `j-omlx serve` with zero-config defaults (`~/.omlx/models`, port 8000). `j-omlx start`, `j-omlx stop`, and `j-omlx restart` are the portable lifecycle commands; Homebrew installs delegate them to `brew services`. To customize, run `j-omlx serve --model-dir /your/path` once to persist settings to `~/.omlx/settings.json`.
 
 Logs are written to two locations:
 - **Service log**: `$(brew --prefix)/var/log/omlx.log` (stdout/stderr)
@@ -254,11 +254,11 @@ Set up OpenClaw, OpenCode, Codex, Hermes Agent, Copilot, Pi, Mistral Vibe, and D
   <img src="docs/images/omlx_integrations.png" alt="oMLX Integrations" width="720">
 </p>
 
-`omlx launch codex` and `omlx launch codex_app` give Codex a catalog of every chat model on the server, so you switch models with `/model` or the app's model picker. `--model`, the saved Codex model, or the server default picks the starting model. This needs Codex 0.148 or newer; relaunch after you add or remove models.
+`j-omlx launch codex` and `j-omlx launch codex_app` give Codex a catalog of every chat model on the server, so you switch models with `/model` or the app's model picker. `--model`, the saved Codex model, or the server default picks the starting model. This needs Codex 0.148 or newer; relaunch after you add or remove models.
 
-`omlx launch copilot` gives Copilot CLI a catalog of every chat model on the server, so you switch models with `/model`. `--model`, the saved Copilot model, or the server default picks the starting model. The catalog goes into Copilot's `providers.json` next to your other providers, and the file is kept at `0600` because it holds the server's API key. This needs Copilot CLI 1.0.83 or newer; relaunch after you add or remove models.
+`j-omlx launch copilot` gives Copilot CLI a catalog of every chat model on the server, so you switch models with `/model`. `--model`, the saved Copilot model, or the server default picks the starting model. The catalog goes into Copilot's `providers.json` next to your other providers, and the file is kept at `0600` because it holds the server's API key. This needs Copilot CLI 1.0.83 or newer; relaunch after you add or remove models.
 
-Install [Mistral Vibe](https://github.com/mistralai/mistral-vibe) 2.26.0 or newer with `uv tool install mistral-vibe`, then run `omlx launch vibe` to select a local model, or `omlx launch vibe --model <model-id>`. Vibe's provider, model, API-key reference and context window are configured for that process through its `VIBE_*` environment overrides. Existing `config.toml`, `VIBE_HOME`, tool permissions and cloud configuration are preserved. Pass Vibe arguments after `--`, for example `omlx launch vibe --model <model-id> -- --resume`.
+Install [Mistral Vibe](https://github.com/mistralai/mistral-vibe) 2.26.0 or newer with `uv tool install mistral-vibe`, then run `j-omlx launch vibe` to select a local model, or `j-omlx launch vibe --model <model-id>`. Vibe's provider, model, API-key reference and context window are configured for that process through its `VIBE_*` environment overrides. Existing `config.toml`, `VIBE_HOME`, tool permissions and cloud configuration are preserved. Pass Vibe arguments after `--`, for example `j-omlx launch vibe --model <model-id> -- --resume`.
 
 ### Performance Benchmark
 
@@ -360,43 +360,43 @@ Models are auto-detected by type. You can also download models directly from the
 
 ```bash
 # Managed background server (macOS app or Homebrew install)
-omlx start
-omlx stop
-omlx restart
+j-omlx start
+j-omlx stop
+j-omlx restart
 
 # Start with default settings (memory guard tier = balanced, manage via admin UI)
-omlx serve --model-dir ~/models
+j-omlx serve --model-dir ~/models
 
 # Choose a memory guard tier at startup
-omlx serve --model-dir ~/models --memory-guard safe
+j-omlx serve --model-dir ~/models --memory-guard safe
 
 # Set a custom memory guard ceiling in GB
-omlx serve --model-dir ~/models --memory-guard-gb 48
+j-omlx serve --model-dir ~/models --memory-guard-gb 48
 
 # Enable SSD cache for KV blocks
-omlx serve --model-dir ~/models --paged-ssd-cache-dir ~/.omlx/cache
+j-omlx serve --model-dir ~/models --paged-ssd-cache-dir ~/.omlx/cache
 
 # Set in-memory hot cache size
-omlx serve --model-dir ~/models --hot-cache-max-size 20%
+j-omlx serve --model-dir ~/models --hot-cache-max-size 20%
 
 # Adjust max concurrent requests (default: 8)
-omlx serve --model-dir ~/models --max-concurrent-requests 16
+j-omlx serve --model-dir ~/models --max-concurrent-requests 16
 
 # With MCP tools
-omlx serve --model-dir ~/models --mcp-config mcp.json
+j-omlx serve --model-dir ~/models --mcp-config mcp.json
 
 # HuggingFace mirror endpoint (for restricted regions)
-omlx serve --model-dir ~/models --hf-endpoint https://hf-mirror.com
+j-omlx serve --model-dir ~/models --hf-endpoint https://hf-mirror.com
 
 # API key authentication
-omlx serve --model-dir ~/models --api-key your-secret-key
+j-omlx serve --model-dir ~/models --api-key your-secret-key
 # Localhost-only: skip verification via admin panel global settings
 
 # Network access requires authentication
-omlx serve --model-dir ~/models --host 0.0.0.0 --api-key your-secret-key
+j-omlx serve --model-dir ~/models --host 0.0.0.0 --api-key your-secret-key
 
 # Inference and admin APIs only, without the web UI (not saved to settings)
-omlx serve --model-dir ~/models --headless
+j-omlx serve --model-dir ~/models --headless
 ```
 
 The default SSD cache limit, `auto`, uses 50% of the sum of free disk space and existing SSD cache files, including GDN sidecars. The budget is refreshed during use and does not shrink simply because the cache grows or the server restarts. Other disk usage can change the budget. Set `--paged-ssd-cache-max-size 20GB` for a fixed limit.

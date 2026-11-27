@@ -36,7 +36,11 @@ from typing import Any, Dict, Optional
 import mlx.core as mx
 
 from ..engine_core import get_mlx_executor
-from ..exceptions import OutOfMemoryError
+from ..exceptions import (
+    OutOfMemoryError,
+    SchedulerQueueFullError,
+    is_metal_out_of_memory,
+)
 from ..image_gen import DEFAULT_IMAGE_QUANTIZE
 from ..image_gen.base import (
     ImageGenerationCancelled,
@@ -65,8 +69,38 @@ def _encode_image(image: Any, fmt: str) -> bytes:
     return buf.getvalue()
 
 
+@dataclasses.dataclass
+class _Row:
+    """One image of one request, as scheduled by the dispatcher."""
+
+    request: "_Request"
+    index: int
+    params: ImageGenParams
+    force_single: bool = False
+
+
+@dataclasses.dataclass
+class _Request:
+    """State of one ``generate`` call across its ``n`` rows."""
+
+    request_id: str
+    activity_id: str
+    cancel: threading.Event
+    n: int
+    output_format: str
+    base_params: ImageGenParams
+    next_index: int
+    future: asyncio.Future
+    results: list = dataclasses.field(default_factory=list)
+
+
 class ImageGenEngine(BaseNonStreamingEngine):
     """Engine serving one text-to-image model."""
+
+    #: One row per request waits here; the dispatcher merges compatible rows.
+    _MAX_WAITING_REQUESTS = 32
+    #: How long a lone batchable row waits for peers that arrive together.
+    _BATCH_WINDOW_S = 0.03
 
     def __init__(
         self,
@@ -93,9 +127,16 @@ class ImageGenEngine(BaseNonStreamingEngine):
         # (near-lossless ones default on) and per-run defaults for opt-in
         # lossy ones.
         self._accel: Dict[str, Any] = {"a8": True, "step_cache": False, **(accel or {})}
-        # One diffusion run at a time: a single run already saturates the GPU,
-        # and serialising bounds the transient memory peak to one run.
-        self._lock = asyncio.Lock()
+        self._waiting: list[_Row] = []
+        self._work: Optional[asyncio.Event] = None
+        self._dispatcher_task: Optional[asyncio.Task] = None
+        self._stopping = False
+        self._requests: Dict[str, _Request] = {}
+        self._batch_count = 0
+        self._row_count = 0
+        self._max_batch_rows = 0
+        self._last_batch_rows = 0
+        self._last_plan_name: Optional[str] = None
         self._soft_limit: int = 0
         self._cancel_events: Dict[str, threading.Event] = {}
         self._images_generated = 0
@@ -141,6 +182,15 @@ class ImageGenEngine(BaseNonStreamingEngine):
             "memory_soft_limit": self._soft_limit,
             "accel": dict(self._accel),
             "capabilities": self._adapter.capabilities.as_dict() if self._adapter else None,
+            "batching": {
+                "enabled": bool(self._adapter and self._adapter.supports_batching),
+                "batches": self._batch_count,
+                "rows": self._row_count,
+                "max_batch": self._max_batch_rows,
+                "last_batch": self._last_batch_rows,
+                "last_plan": self._last_plan_name,
+                "waiting": len(self._waiting),
+            },
             **(
                 self._adapter.runtime_stats(self._model)
                 if self._adapter is not None and self._model is not None
@@ -199,11 +249,27 @@ class ImageGenEngine(BaseNonStreamingEngine):
         model, elapsed = await loop.run_in_executor(get_mlx_executor(), _load_sync)
         self._model = model
         self._load_seconds = elapsed
+        self._ensure_dispatcher()
         logger.info("Image engine started: %s in %.1fs", self._model_name, elapsed)
 
     async def stop(self) -> None:
+        self._stopping = True
         for ev in list(self._cancel_events.values()):
             ev.set()
+        for request in list(self._requests.values()):
+            self._cancel_request(request)
+        self._waiting.clear()
+        if self._work is not None:
+            self._work.set()
+        task = self._dispatcher_task
+        self._dispatcher_task = None
+        if task is not None:
+            try:
+                await task
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # pragma: no cover - dispatcher already logs
+                logger.exception("Image dispatcher stopped with an error")
         if self._model is None:
             return
         logger.info("Stopping image engine: %s", self._model_name)
@@ -212,16 +278,14 @@ class ImageGenEngine(BaseNonStreamingEngine):
         adapter = self._adapter
         loop = asyncio.get_running_loop()
 
-        def _release():
+        def _release(current):
             if adapter is not None:
                 try:
-                    adapter.release(model)
+                    adapter.release(current)
                 except Exception:  # pragma: no cover - best effort
                     logger.exception("Image adapter release failed")
 
-        # Wait for an in-flight generation to observe cancellation first.
-        async with self._lock:
-            await loop.run_in_executor(get_mlx_executor(), _release)
+        await loop.run_in_executor(get_mlx_executor(), _release, model)
         del model
         gc.collect()
         await loop.run_in_executor(
@@ -306,32 +370,20 @@ class ImageGenEngine(BaseNonStreamingEngine):
             accel={k: v for k, v in run_accel.items() if v},
         )
 
-    def _plan_memory(
-        self, params: ImageGenParams
+    def _plan_for(
+        self, params: ImageGenParams, batch_size: int
     ) -> tuple[MemoryPlan, Optional[int]]:
-        """Pick the fastest plan that fits; return (plan, owner_memory_limit)."""
+        """Pick the fastest plan that fits ``batch_size`` rows."""
         plans = self._adapter.memory_plans(
             params.width, params.height, len(params.references)
         )
         if not self._soft_limit:
             return plans[0], None
-        active = int(mx.get_active_memory())
-        budget = self._soft_limit - active
+        budget = self._soft_limit - int(mx.get_active_memory())
         for plan in plans:
-            if plan.peak_bytes <= budget:
-                if plan is not plans[0]:
-                    logger.info(
-                        "Image %dx%d: preferred peak %.1f GB exceeds the %.1f GB "
-                        "budget; using plan %s (%.1f GB)",
-                        params.width,
-                        params.height,
-                        plans[0].peak_bytes / 1e9,
-                        budget / 1e9,
-                        plan.name,
-                        plan.peak_bytes / 1e9,
-                    )
+            if plan.peak_for(batch_size) <= budget:
                 return plan, self._soft_limit
-        smallest = plans[-1].peak_bytes
+        smallest = plans[-1].peak_for(batch_size)
         raise OutOfMemoryError(
             f"Generating a {params.width}x{params.height} image needs about "
             f"{smallest / 1e9:.1f} GB more memory, but only "
@@ -340,6 +392,247 @@ class ImageGenEngine(BaseNonStreamingEngine):
             requested_bytes=smallest,
             available_bytes=max(0, budget),
         )
+
+    def _choose_batch(
+        self, head: _Row, count: int
+    ) -> tuple[int, MemoryPlan, Optional[int]]:
+        """Largest batch of the group that fits, with its plan and owner limit."""
+        params = head.params
+        if head.force_single:
+            plans = self._adapter.memory_plans(
+                params.width, params.height, len(params.references)
+            )
+            return 1, plans[-1], (self._soft_limit or None)
+        if count <= 1:
+            plan, limit = self._plan_for(params, 1)
+            return 1, plan, limit
+        last: Optional[OutOfMemoryError] = None
+        for size in range(count, 0, -1):
+            try:
+                plan, limit = self._plan_for(params, size)
+            except OutOfMemoryError as exc:
+                last = exc
+                continue
+            if size < count:
+                logger.info(
+                    "Image %dx%d: memory allows a batch of %d of %d requests "
+                    "(plan %s, %.1f GB)",
+                    params.width,
+                    params.height,
+                    size,
+                    count,
+                    plan.name,
+                    plan.peak_for(size) / 1e9,
+                )
+            return size, plan, limit
+        raise last
+
+    @staticmethod
+    def _batch_key(params: ImageGenParams) -> tuple:
+        return (
+            params.width,
+            params.height,
+            params.steps,
+            round(params.guidance, 4),
+            params.extra.get("scheduler"),
+            tuple(sorted(params.accel.items())),
+            params.strength,
+        )
+
+    def _can_batch(self, params: ImageGenParams) -> bool:
+        return (
+            bool(self._adapter and self._adapter.supports_batching)
+            and not params.references
+            and params.mask is None
+            and params.strength == 1.0
+        )
+
+    def _ensure_dispatcher(self) -> None:
+        if self._dispatcher_task is not None and not self._dispatcher_task.done():
+            return
+        self._stopping = False
+        if self._work is None:
+            self._work = asyncio.Event()
+        else:
+            self._work.clear()
+        self._dispatcher_task = asyncio.create_task(self._dispatch_loop())
+
+    def _enqueue_row(self, request: _Request, index: int) -> None:
+        base = request.base_params
+        run = dataclasses.replace(base, seed=base.seed + index, extra=dict(base.extra))
+        self._waiting.append(_Row(request=request, index=index, params=run))
+        if self._work is not None:
+            self._work.set()
+
+    def _step_callback(self, row: _Row):
+        def on_step(step: int, total: int) -> None:
+            if row.request.cancel.is_set():
+                raise ImageGenerationCancelled()
+            self._update_activity(
+                row.request.activity_id,
+                completed_items=row.index * row.params.steps + step,
+            )
+
+        return on_step
+
+    def _fail_request(self, request: _Request, exc: BaseException) -> None:
+        if request.future.done():
+            return
+        self._waiting[:] = [row for row in self._waiting if row.request is not request]
+        self._requests.pop(request.request_id, None)
+        request.future.set_exception(exc)
+
+    def _cancel_request(self, request: _Request) -> None:
+        self._fail_request(request, ImageGenerationCancelled())
+
+    def _finish_row(self, row: _Row, result: Dict[str, Any]) -> None:
+        request = row.request
+        if request.future.done():
+            return
+        request.results.append(result)
+        request.next_index += 1
+        if request.next_index >= request.n or request.cancel.is_set():
+            self._requests.pop(request.request_id, None)
+            if request.cancel.is_set():
+                request.future.set_exception(ImageGenerationCancelled())
+            else:
+                request.future.set_result(list(request.results))
+            return
+        self._enqueue_row(request, request.next_index)
+
+    async def _run_batch(
+        self, rows: list[_Row], plan: MemoryPlan, limit: Optional[int]
+    ) -> None:
+        model = self._model
+        adapter = self._adapter
+        if model is None or adapter is None:
+            raise RuntimeError("Image engine was stopped")
+        loop = asyncio.get_running_loop()
+        callbacks = [self._step_callback(row) for row in rows]
+        owner = id(self)
+
+        def _run_sync():
+            if limit:
+                set_chunk_memory_limit(owner, limit)
+            try:
+                t0 = time.monotonic()
+                images = adapter.generate_batch(
+                    model, [row.params for row in rows], callbacks, plan
+                )
+                elapsed = time.monotonic() - t0
+                return [
+                    None
+                    if image is None
+                    else (
+                        _encode_image(image, row.request.output_format),
+                        row.params.seed,
+                    )
+                    for row, image in zip(rows, images)
+                ], elapsed
+            finally:
+                if limit:
+                    set_chunk_memory_limit(owner, None)
+                mx.synchronize()
+                mx.clear_cache()
+
+        try:
+            results, elapsed = await loop.run_in_executor(get_mlx_executor(), _run_sync)
+        except Exception as exc:
+            oom = isinstance(exc, OutOfMemoryError) or is_metal_out_of_memory(exc)
+            if oom and len(rows) > 1:
+                for row in rows:
+                    row.force_single = True
+                self._waiting[:0] = rows
+                return
+            failure = (
+                exc
+                if isinstance(exc, OutOfMemoryError) or not oom
+                else OutOfMemoryError(str(exc))
+            )
+            for row in rows:
+                if row.request.cancel.is_set():
+                    self._fail_request(row.request, ImageGenerationCancelled())
+                else:
+                    self._fail_request(row.request, failure)
+            return
+        if len(results) < len(rows):
+            results += [None] * (len(rows) - len(results))
+        self._batch_count += 1
+        self._row_count += len(rows)
+        self._last_batch_rows = len(rows)
+        self._max_batch_rows = max(self._max_batch_rows, len(rows))
+        self._last_plan_name = plan.name
+        per_row = elapsed / max(1, len(rows))
+        for row, result in zip(rows, results):
+            if result is None:
+                self._fail_request(row.request, ImageGenerationCancelled())
+                continue
+            data, seed = result
+            self._images_generated += 1
+            self._total_steps += row.params.steps
+            self._total_step_seconds += per_row
+            self._finish_row(
+                row, {"data": data, "seed": seed, "seconds": round(per_row, 3)}
+            )
+
+    async def _dispatch_loop(self) -> None:
+        while not self._stopping:
+            if not self._waiting:
+                if self._work is None:
+                    self._work = asyncio.Event()
+                self._work.clear()
+                if self._waiting:
+                    continue
+                await self._work.wait()
+                continue
+            head = self._waiting[0]
+            if head.request.cancel.is_set():
+                self._cancel_request(head.request)
+                continue
+            group = [head]
+            if self._can_batch(head.params) and not head.force_single:
+                if len(self._waiting) == 1 and self._BATCH_WINDOW_S:
+                    await asyncio.sleep(self._BATCH_WINDOW_S)
+                    if self._stopping or not any(row is head for row in self._waiting):
+                        continue
+                    if head.request.cancel.is_set():
+                        self._cancel_request(head.request)
+                        continue
+                key = self._batch_key(head.params)
+                for row in self._waiting[1:]:
+                    if row.request.cancel.is_set():
+                        self._cancel_request(row.request)
+                        continue
+                    if (
+                        not row.force_single
+                        and self._can_batch(row.params)
+                        and self._batch_key(row.params) == key
+                    ):
+                        group.append(row)
+            try:
+                size, plan, limit = self._choose_batch(head, len(group))
+            except OutOfMemoryError as exc:
+                self._fail_request(head.request, exc)
+                continue
+            rows = group[:size]
+            for row in rows:
+                self._waiting.remove(row)
+            rows = [row for row in rows if not row.request.cancel.is_set()]
+            if not rows:
+                continue
+            if len(rows) > 1:
+                logger.info("Image batch: %d requests (%s)", len(rows), plan.name)
+            try:
+                await self._run_batch(rows, plan, limit)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.exception("Image batch failed")
+                for row in rows:
+                    self._fail_request(row.request, exc)
+        for row in list(self._waiting):
+            self._cancel_request(row.request)
+        self._waiting.clear()
 
     async def generate(
         self,
@@ -358,10 +651,14 @@ class ImageGenEngine(BaseNonStreamingEngine):
         if fmt not in ("png", "jpeg", "webp"):
             raise ValueError(f"Unsupported output_format {output_format!r}")
 
+        waiting = len(self._waiting)
+        if waiting >= self._MAX_WAITING_REQUESTS:
+            raise SchedulerQueueFullError(waiting, self._MAX_WAITING_REQUESTS)
+
         total_steps = params.steps * n
         activity_id = self._begin_activity(
             "image",
-            detail=params.prompt[:80],
+            detail=None,
             total_items=total_steps,
             metadata={
                 "completed_items": 0,
@@ -375,51 +672,29 @@ class ImageGenEngine(BaseNonStreamingEngine):
         key = request_id or activity_id
         self._cancel_events[key] = cancel
         loop = asyncio.get_running_loop()
-        results: list[Dict[str, Any]] = []
+        request = _Request(
+            request_id=key,
+            activity_id=activity_id,
+            cancel=cancel,
+            n=n,
+            output_format=fmt,
+            base_params=params,
+            next_index=0,
+            future=loop.create_future(),
+        )
+        self._requests[key] = request
+        self._ensure_dispatcher()
+        self._enqueue_row(request, 0)
         try:
-            async with self._lock:
-                if self._model is None:
-                    raise RuntimeError("Image engine was stopped")
-                model = self._model
-                adapter = self._adapter
-                for i in range(n):
-                    run = dataclasses.replace(
-                        params, seed=params.seed + i, extra=dict(params.extra)
-                    )
-                    plan, limit = self._plan_memory(run)
-                    done_before = i * params.steps
-
-                    def on_step(step: int, total: int, _base=done_before) -> None:
-                        if cancel.is_set():
-                            raise ImageGenerationCancelled()
-                        self._update_activity(
-                            activity_id, completed_items=_base + step
-                        )
-
-                    owner = id(self)
-
-                    def _run_sync(run=run, plan=plan, limit=limit):
-                        if limit:
-                            set_chunk_memory_limit(owner, limit)
-                        try:
-                            t0 = time.monotonic()
-                            image = adapter.generate(model, run, on_step, plan)
-                            elapsed = time.monotonic() - t0
-                            return _encode_image(image, fmt), elapsed
-                        finally:
-                            if limit:
-                                set_chunk_memory_limit(owner, None)
-                            mx.synchronize()
-                            mx.clear_cache()
-
-                    data, elapsed = await loop.run_in_executor(get_mlx_executor(), _run_sync)
-                    self._images_generated += 1
-                    self._total_steps += run.steps
-                    self._total_step_seconds += elapsed
-                    results.append({"data": data, "seed": run.seed, "seconds": elapsed})
-            return results
+            return await request.future
+        except asyncio.CancelledError:
+            cancel.set()
+            if not request.future.done():
+                request.future.cancel()
+            raise
         finally:
             self._cancel_events.pop(key, None)
+            self._requests.pop(key, None)
             await self._finish_activity(activity_id)
 
     def cancel(self, request_id: str) -> bool:

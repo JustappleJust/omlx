@@ -4,14 +4,14 @@
 CLI for oMLX.
 
 Commands:
-    omlx serve --model-dir /path/to/models    Start multi-model server
+    j-omlx serve --model-dir /path/to/models    Start multi-model server
 
 Usage:
     # Multi-model serving
-    omlx serve --model-dir /path/to/models
+    j-omlx serve --model-dir /path/to/models
 
     # With pinned models
-    omlx serve --model-dir /path/to/models --pin llama-3b,qwen-7b
+    j-omlx serve --model-dir /path/to/models --pin llama-3b,qwen-7b
 """
 
 import argparse
@@ -544,7 +544,7 @@ def launch_command(args, extra_args: list[str] | None = None):
         resp.raise_for_status()
     except Exception:
         print(f"oMLX server is not running at {base_url}")
-        print("Start the server first: omlx start")
+        print("Start the server first: j-omlx start")
         sys.exit(1)
     try:
         default_model = _optional_str(resp.json().get("default_model")) or ""
@@ -856,7 +856,7 @@ def lifecycle_command(args) -> int:
 
     if command == "start":
         print("Background start is available for the macOS app and Homebrew installs.")
-        print("For this install, run foreground server mode with: omlx serve")
+        print("For this install, run foreground server mode with: j-omlx serve")
     else:
         print("Background stop/restart requires the macOS app or Homebrew service.")
     return 1
@@ -1139,8 +1139,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  omlx serve mlx-community/Llama-3.2-3B-Instruct-4bit --port 8000
-  omlx launch codex --model qwen3.5
+  j-omlx serve mlx-community/Llama-3.2-3B-Instruct-4bit --port 8000
+  j-omlx launch codex --model qwen3.5
         """,
     )
     parser.add_argument(

@@ -95,6 +95,12 @@ class MemoryPlan:
     name: str
     peak_bytes: int
     options: dict = field(default_factory=dict)
+    #: Extra transient bytes for each additional row in a static batch.
+    extra_row_bytes: int = 0
+
+    def peak_for(self, batch_size: int) -> int:
+        """Transient peak when ``batch_size`` requests share the pass."""
+        return self.peak_bytes + self.extra_row_bytes * (max(1, int(batch_size)) - 1)
 
 
 # (step_index_1_based, total_steps) -> None. May raise ImageGenerationCancelled.
@@ -135,6 +141,8 @@ class ImageModelAdapter(ABC):
     pipeline_classes: tuple[str, ...] = ()
     defaults: ImageDefaults
     capabilities: ImageCapabilities = ImageCapabilities()
+    #: Whether ``generate_batch`` runs compatible requests in one denoise pass.
+    supports_batching: bool = False
 
     # ---- detection / sizing (must stay import-light) -----------------
 
@@ -255,6 +263,24 @@ class ImageModelAdapter(ABC):
         Called on the MLX executor. ``plan`` is one of :meth:`memory_plans`
         (None = the preferred plan).
         """
+
+    def generate_batch(
+        self,
+        model: Any,
+        params_list: list[ImageGenParams],
+        on_step_list: list[StepCallback],
+        plan: Optional[MemoryPlan] = None,
+    ) -> list["Any"]:
+        """Run compatible requests, returning one image per row (None = cancelled).
+
+        The default keeps the existing per-request path. Adapters that set
+        :attr:`supports_batching` may merge the rows into one denoise pass;
+        they must still return the results in input order.
+        """
+        return [
+            self.generate(model, params, on_step, plan)
+            for params, on_step in zip(params_list, on_step_list)
+        ]
 
     def release(self, model: Any) -> None:
         """Free family-specific caches before the model is dropped."""

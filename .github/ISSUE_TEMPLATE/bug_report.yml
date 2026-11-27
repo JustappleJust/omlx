@@ -9,7 +9,7 @@ body:
     id: version
     attributes:
       label: oMLX version
-      description: Shown in the app's About window, or run `omlx --version`.
+      description: Shown in the app's About window, or run `j-omlx --version`.
       placeholder: e.g. 0.7.0
     validations:
       required: true

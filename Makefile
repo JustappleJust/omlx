@@ -5,7 +5,7 @@ KERNEL_BUILD_DEPS = $(shell $(PYTHON) -c "import tomllib; \
 	reqs = tomllib.load(open('pyproject.toml', 'rb'))['build-system']['requires']; \
 	print(' '.join(repr(r) for r in reqs if r.startswith(('setuptools', 'cmake', 'nanobind'))))")
 
-.PHONY: install install-no-kernels mcp dev dev-no-kernels kernels clean-kernels web app
+.PHONY: install install-no-kernels mcp dev dev-no-kernels kernels clean-kernels web app bench-image
 
 # Editable install of the server and the web UI, then the native custom kernels.
 install: install-no-kernels
@@ -48,3 +48,10 @@ web:
 # Build a runnable macOS app bundle with freshly compiled native custom kernels.
 app:
 	apps/omlx-mac/Scripts/build.sh release --with-custom-kernel
+
+# Image-generation speed, memory and concurrency benchmark.
+#   make bench-image MODEL=~/.omlx/models/mflux-community/krea-2-turbo-mflux-q4 \
+#     OUT=/tmp/omlx-bench ARGS="--sizes 512x512 --concurrent 2"
+bench-image:
+	@test -n "$(MODEL)" || (echo "usage: make bench-image MODEL=<path> OUT=<dir> [ARGS='...']" >&2; exit 2)
+	$(PYTHON) scripts/bench_image.py --model "$(MODEL)" --out "$(or $(OUT),/tmp/omlx-bench)" $(ARGS)

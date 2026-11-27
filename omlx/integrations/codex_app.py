@@ -14,7 +14,7 @@ own codex CLI binary, which is used as a fallback when no ``codex``
 is on PATH (DMG-only installs).
 
 Usage:
-    omlx launch codex_app [--model qwen3.5]
+    j-omlx launch codex_app [--model qwen3.5]
 
 Which launches:
     codex app

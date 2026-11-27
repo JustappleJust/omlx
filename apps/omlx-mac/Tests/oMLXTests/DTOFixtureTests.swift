@@ -112,7 +112,7 @@ final class DTOFixtureTests: XCTestCase {
         XCTAssertNotNil(stats.host)
         XCTAssertNotNil(stats.port)
         XCTAssertNotNil(stats.cliPrefix,
-                        "Stats must carry cli_prefix so Integrations can render `omlx launch …` commands.")
+                        "Stats must carry cli_prefix so Integrations can render `j-omlx launch …` commands.")
         XCTAssertNotNil(stats.apiKeySet,
                         "Stats must surface api_key_set so Integrations can mask the Claude env recipe.")
 

@@ -19,7 +19,7 @@ struct StatsDTO: Codable, Equatable, Sendable {
     let host: String?
     let port: Int?
     let apiKeySet: Bool?
-    /// Absolute CLI invocation prefix used for `omlx launch <tool>` strings.
+    /// Absolute CLI invocation prefix used for `j-omlx launch <tool>` strings.
     /// `nil` on older servers; callers fall back to the bare `"omlx"` token
     /// (matches the dashboard JS `_launchCmd`).
     let cliPrefix: String?
